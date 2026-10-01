@@ -276,3 +276,13 @@ The project should ultimately demonstrate the ability to:
 The central idea is therefore not "I built an F1 website", but:
 
 > **I designed and implemented an end-to-end system that transforms raw data into an accessible analytical product.**
+
+---
+
+## Data Source & Acknowledgements
+
+The historical Formula 1 CSV datasets used in this project are sourced from Kaggle:
+
+* **Dataset:** [Formula 1 World Championship (1950 - 2024)](https://www.kaggle.com/datasets/rohanrao/formula-1-world-championship-1950-2020)
+* **Author / Maintainer:** [Rohan Rao](https://www.kaggle.com/rohanrao)
+* **Original Data Origin:** [Ergast Developer API](https://ergast.com/mrd/)

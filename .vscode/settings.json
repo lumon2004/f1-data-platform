@@ -1,3 +1,16 @@
 {
-    "java.compile.nullAnalysis.mode": "automatic"
+    "java.compile.nullAnalysis.mode": "automatic",
+    "sqltools.connections": [
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "database": "f1data",
+            "username": "f1user",
+            "name": "F1 Data Platform"
+        }
+    ],
+    "java.configuration.updateBuildConfiguration": "automatic"
 }

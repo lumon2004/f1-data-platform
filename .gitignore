@@ -527,5 +527,6 @@ gradle-app.setting
 raw/
 
 # Ignore processed files
+processed/
 processed/.env
 frontend/dist
