@@ -175,3 +175,26 @@ Screenshot di questa verifica, fuori dal repository: `/private/tmp/claude-501/-U
 - **Storia git a blocchi**: 11 commit, uno solo per le tappe 5, 6 e 8; 7 commit non ancora inviati al remoto.
 - **Software senza licenza e termini di Ergast non chiariti**: accettabile finché il repository è privato.
 - **Screenshot solo a 1 440 px**; Team comparison non è tra quelli prodotti.
+
+## 9. Aggiornamento dopo la patch ai test (commit `4206557`)
+
+**Verdetto aggiornato: SÌ, lo step si può dichiarare chiuso**, con una condizione di processo che non posso verificare io (primo punto qui sotto).
+
+- **Approvazione dell'utente: non verificabile da me.** Il coordinatore e il messaggio di commit dicono che la patch al file bloccato `conftest.py` dei test di accettazione è stata approvata e applicata dall'utente. Io vedo solo un commit con lo stesso autore degli altri e la riga di co-autore dell'assistente. La conferma spetta all'utente, che dà comunque l'approvazione finale.
+- **Tre esecuzioni dello script di verifica dopo la patch: 3 su 3 con codice 0.** Test di accettazione 38 su 38 in 17,7 s, 17,1 s e 16,5 s; backend e pipeline (160 passati, 5 saltati) verdi; screenshot identici al byte alle esecuzioni precedenti. Nessun altro stack acceso durante le esecuzioni.
+- **Punti 2 e 3 chiusi**: `PROGRESS.md` è in commit e aggiornato; `README.md:207` dice 72.
+
+### Giudizio sulla patch
+
+Che cosa fa: una sessione HTTP condivisa (connessione riusata), `Retry(total=3, connect=3, read=3, status=0, backoff_factor=0.2)`, timeout `(5, 30)`.
+
+- **Non indebolisce i controlli sul contenuto.** Verificato nell'immagine dei test (urllib3 2.8.0): senza lista di stati, 500 e 503 non vengono ritentati; 404, 400, schema JSON, statistiche attese e conteggi di coerenza restano severi come prima. I test della dashboard passano dal browser e non sono toccati.
+- **Copre il guasto osservato.** Era un timeout in connessione: ora scade dopo 5 s e viene ritentato; inoltre le connessioni aperte passano da circa 1 430 a poche unità.
+- **`read=3` è più largo del necessario e può nascondere un difetto vero.** Un endpoint che ogni tanto chiude la connessione, oppure non risponde entro 30 s, viene ritentato fino a tre volte e il test passa senza lasciare traccia (l'avviso di urllib3 compare solo nei log dei test falliti). Prima un solo episodio faceva fallire l'esecuzione. Il guasto osservato riguardava solo la connessione: `read=0` basterebbe e sarebbe più severo. Da proporre all'utente; non bloccante, perché tempi e stabilità dell'API sono coperti anche dai 176 test JUnit, che non passano da questo client.
+- **Effetti minori**: `test_tempi_di_risposta` ora misura senza l'apertura della connessione (pochi millisecondi su una soglia di 500; misurati 6-15 ms); un backend che cade e riparte durante i test non verrebbe mascherato dai tentativi in connessione, che durano in tutto circa 1,4 s più i timeout.
+
+### Che cosa resta consapevolmente aperto
+
+1. Test: `read=3` nella sessione dei test; i 5 test della pipeline su PostgreSQL fuori da ogni passaggio automatico; nessuna integrazione continua.
+2. Dati e licenze: termini originali di Ergast non chiariti (da decidere prima di pubblicare); validazione con 0 scarti sui dati reali; stint senza mescole; caricamento solo additivo.
+3. Dashboard e repository: distacco calcolato nel browser; codice che disegna senza test unitari; approvazione visiva dell'utente sugli screenshot; volumi Docker rimasti (`f1-clone_postgres-data`, `f1-prova_postgres-data`, quattro anonimi).

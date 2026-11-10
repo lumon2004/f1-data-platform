@@ -4,8 +4,8 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 
 ## Stato attuale
 
-- **Tappa corrente**: 9 — verifica finale del `reviewer` in corso; poi approvazione visiva dell'utente sugli screenshot in `review/`.
-- **Bloccanti**: nessuno. `./verifica.sh` passa (38 test di accettazione su 38, 2026-11-10).
+- **Tappa corrente**: step completato. Resta l'approvazione dell'utente su aspetto e leggibilità degli screenshot in `review/`.
+- **Bloccanti**: nessuno. `./verifica.sh` passa in modo stabile (9 esecuzioni su 9 dopo la patch ai test del 2026-11-10: 38 test di accettazione su 38). Verdetto finale del `reviewer`: step chiudibile. Proposta facoltativa del `reviewer`, da decidere con l'utente perché il file è bloccato: `read=0` nei nuovi tentativi della sessione dei test.
 
 ## Tappe
 
@@ -18,7 +18,7 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 6. [x] Visualizzazioni: tempi sul giro, posizioni, stint e pit stop, confronti
 7. [x] Docker end-to-end: avvio da clone pulito, healthcheck, servizio di caricamento dati
 8. [x] Documentazione: README completo, diagramma architettura, esempi API, screenshot
-9. [ ] Tutti i test di accettazione verdi e screenshot in `review/`
+9. [x] Tutti i test di accettazione verdi e screenshot in `review/`
 
 ## Stato dei componenti
 
