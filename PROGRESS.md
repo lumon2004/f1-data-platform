@@ -4,7 +4,7 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 
 ## Stato attuale
 
-- **Tappa corrente**: 4 — API Spring Boot (responsabile: `sviluppatore-backend`)
+- **Tappa corrente**: 5 — Dashboard (responsabile: `sviluppatore-frontend`)
 - **Bloccanti**: nessuno.
 
 ## Tappe
@@ -13,7 +13,7 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 1. [x] Impostazione del progetto: Docker Compose con PostgreSQL, build per ogni componente, test vuoti
 2. [x] Modello dati: schema, migrazioni, diagramma ER, `docs/modello-dati.md`
 3. [x] Pipeline dati: ingestione, validazione, normalizzazione, formato intermedio, caricamento, report scarti
-4. [ ] API Spring Boot: endpoint, aggregazioni, gestione errori, OpenAPI, test Testcontainers
+4. [x] API Spring Boot: endpoint, aggregazioni, gestione errori, OpenAPI, test Testcontainers
 5. [ ] Dashboard: struttura, filtri, chiamate API, gestione errori
 6. [ ] Visualizzazioni: tempi sul giro, posizioni, stint e pit stop, confronti
 7. [ ] Docker end-to-end: avvio da clone pulito, healthcheck, servizio di caricamento dati
@@ -22,10 +22,10 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 
 ## Stato dei componenti
 
-- `docker-compose.yml`: `postgres` (17-alpine, healthcheck) e `pipeline` come strumento a richiesta (profilo `strumenti`). `backend`, `frontend` e il caricamento automatico alla tappa 7.
+- `docker-compose.yml`: `postgres`, `backend` (healthcheck su `/actuator/health`) e `pipeline` come servizio una tantum che carica il campione dopo `backend` healthy. Manca `frontend` (tappa 7). Stack di sviluppo: `POSTGRES_DB=f1 POSTGRES_USER=f1 POSTGRES_PASSWORD=<prova> POSTGRES_PORT=25432 API_PORT=28080 docker compose -p f1-dev up -d --build` (API su http://localhost:28080).
 - `data-pipeline/`: `f1-pipeline` con `download`, `sample`, `transform`, `load`, `run` (modulo `csv` + PyArrow, psycopg 3, versioni fissate). Campione 2022–2024 in `sample/` (11 CSV, 2,5 MB, 0 scarti). Dataset completo in `raw/` (non versionato): 0 scarti, 2 posizioni derivate. Test: nell'immagine `f1-verifica-test`, `pip install ".[test]"`, `pytest` (160 passati, 5 saltati senza `F1_PIPELINE_TEST_DSN`).
 - `database/migrations/`: V1–V4, 12 tabelle. Modello e regole di trasformazione in `docs/modello-dati.md`.
-- `backend/`: scheletro Spring Boot 3.5, `JdbcClient`, Flyway (migrazioni impacchettate nel jar), springdoc. Test: `./mvnw -B -q verify`.
+- `backend/`: i sette endpoint del contratto, errori JSON, OpenAPI, `Dockerfile`. Test: `./mvnw -B -q verify` (91 test, campione caricato dalla pipeline vera). I test di accettazione di API, database e pipeline passano contro lo stack `f1-dev` (21 su 21).
 - `frontend/`: scheletro HTML + moduli ES + Tailwind v4, server Node con proxy `/api`. Test: `npm test`.
 
 ## Note per le tappe successive
@@ -48,3 +48,4 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 - 2026-11-10 — Tappa 1 chiusa: Compose con PostgreSQL e scheletri di pipeline, backend e frontend con test verdi. Revisione del `reviewer`: due difetti corretti (riga di `mvnw` scambiata per credenziale; `npm test` non funzionante su Node 22/24).
 - 2026-11-10 — Tappa 2 chiusa: 4 migrazioni Flyway (12 tabelle), `docs/modello-dati.md`; applicate su PostgreSQL 17 e riviste dal `reviewer` (via libera).
 - 2026-11-10 — Tappa 3 chiusa: dataset scaricato dall'utente con il token Kaggle; pipeline completa, campione 2022–2024, `docs/fonte-dati.md` (licenza CC0 verificata su Kaggle; termini originali di Ergast non più consultabili). Assunzioni dello schema verificate sui dati reali; due posizioni mancanti del 2005 derivate da `positionText`. Revisione del `reviewer`: via libera.
+- 2026-11-10 — Tappa 4 chiusa: API REST con i sette endpoint, 91 test, Dockerfile del backend, Compose con backend e caricamento del campione. Revisione del `reviewer`: via libera; 160 statistiche ricalcolate dai CSV senza differenze.

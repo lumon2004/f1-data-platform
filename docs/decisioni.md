@@ -34,6 +34,13 @@ Registro delle scelte tecniche, con il motivo. Le decisioni prese con l'utente (
 - **Test con Testcontainers e le stesse variabili `POSTGRES_*` della produzione**, invece di `@ServiceConnection`: i test coprono anche la mappatura della configurazione.
 - **Actuator espone solo `health`**, che include il controllo del database: è l'healthcheck del Compose.
 - **springdoc-openapi 2.x con interfaccia**: `/v3/api-docs` richiesto dal contratto, più Swagger UI utile per una vetrina.
+- **Definizioni delle statistiche** (dichiarate in OpenAPI): `races` conta i Gran Premi distinti in cui si compare in classifica, `starts` le sole partenze; `podiums` conta i piazzamenti tra i primi tre (`count(DISTINCT (race_id, position))`), quindi per una scuderia può superare `races`; `points` conta solo le gare e `sprintPoints` le sprint, e la loro somma è il totale di campionato. Verificate ricalcolando dai CSV del campione tutte le combinazioni pilota/scuderia per stagione.
+- **Una sola query di statistiche per pilota e scuderia**: cambia solo la colonna filtrata, che è una costante del codice; tutti i valori della richiesta sono parametri con nome.
+- **Gare e sprint nella stessa tabella, filtro di sessione in ogni query**: il comportamento predefinito di `/api/races/{id}/results` è "solo gara"; `?session=sprint` restituisce la sprint.
+- **`?season=` senza gare per quel pilota o scuderia risponde 200 con contatori a zero**; il 404 vale solo per pilota o scuderia inesistente.
+- **Errori in un unico gestore** con corpo `{status, error, message, path, timestamp}` e messaggi scritti nel codice, mai presi dall'eccezione: il 500 non espone dettagli interni.
+- **I test del backend caricano il campione con la pipeline vera**: Testcontainers avvia PostgreSQL, Flyway applica le migrazioni, poi l'immagine di `data-pipeline/` esegue `run --source sample` sulla stessa rete, una volta per JVM. Nessun dato inventato né copiato a mano.
+- **Immagine Docker multi-stage** (JDK 21 per la build, JRE 21 Alpine e utente non root per l'esecuzione), con contesto di build nella radice del repository; i test restano fuori dall'immagine perché usano Testcontainers.
 
 ## Frontend (`frontend/`)
 

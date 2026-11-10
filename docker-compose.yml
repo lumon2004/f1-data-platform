@@ -1,7 +1,7 @@
 # F1 Data Platform — orchestrazione locale.
 # Le credenziali arrivano da variabili d'ambiente o da un file .env non versionato (vedi .env.example).
-# Oggi: PostgreSQL e la pipeline come strumento a richiesta. Backend, frontend e il caricamento
-# automatico del dataset di esempio si aggiungono alla tappa 7.
+# `docker compose up` avvia PostgreSQL e il backend, poi carica il dataset di esempio.
+# Il frontend si aggiunge alla tappa 7.
 
 services:
   postgres:
@@ -20,19 +20,46 @@ services:
       timeout: 3s
       retries: 20
 
-  # Pipeline dati come strumento a richiesta: il profilo la tiene fuori da
-  # `docker compose up`. Per scaricare il dataset completo:
-  #   docker compose run --rm pipeline download --output /data/raw
-  # Alla tappa 7 diventa il servizio una tantum che carica il dataset di esempio.
+  # API REST. All'avvio applica le migrazioni di database/migrations/ (impacchettate nel jar):
+  # per questo il contesto di build è la radice del repository.
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      POSTGRES_HOST: postgres
+      # Porta interna alla rete di Compose: POSTGRES_PORT è quella pubblicata sull'host.
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-}
+      POSTGRES_USER: ${POSTGRES_USER:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  # Pipeline dati: servizio una tantum. Con `docker compose up` carica il dataset di esempio
+  # (data-pipeline/sample/, incluso nell'immagine) e termina con codice 0.
+  # Lo schema lo crea il backend, quindi parte dopo che il backend è healthy.
+  # Altri usi, a richiesta:
+  #   docker compose run --rm pipeline download --output /data/raw   (dataset completo da Kaggle)
+  #   docker compose run --rm pipeline run --source raw              (carica il dataset completo)
   pipeline:
     build: ./data-pipeline
-    profiles: ["strumenti"]
+    command: ["run", "--source", "sample", "--processed", "/tmp/processed"]
+    restart: "no"
     environment:
       KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
       KAGGLE_USERNAME: ${KAGGLE_USERNAME:-}
       KAGGLE_KEY: ${KAGGLE_KEY:-}
       POSTGRES_HOST: postgres
-      # Porta interna alla rete di Compose: POSTGRES_PORT è quella pubblicata sull'host.
       POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB:-}
       POSTGRES_USER: ${POSTGRES_USER:-}
@@ -40,6 +67,9 @@ services:
     volumes:
       - ./data-pipeline/raw:/data/raw
       - ./data-pipeline/processed:/data/processed
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres-data:

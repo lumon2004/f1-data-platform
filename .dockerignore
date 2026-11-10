@@ -1,0 +1,35 @@
+# Contesto di build = radice del repository (usato da backend/Dockerfile).
+# data-pipeline/ ha un proprio .dockerignore, valido quando il contesto è quella cartella.
+
+# Storia e strumenti
+.git
+.github
+.claude
+.vscode
+.idea
+**/.DS_Store
+
+# Credenziali locali: mai nel contesto di build
+.env
+.env.*
+!.env.example
+
+# Dati completi e intermedi (nel contesto resta solo data-pipeline/sample)
+data-pipeline/raw
+data-pipeline/processed
+
+# Aree di lavoro, log, screenshot
+.verifica
+logs
+review
+
+# Prodotti di build e cache
+**/target
+**/node_modules
+**/dist
+**/build
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.pytest_cache
+**/.venv
