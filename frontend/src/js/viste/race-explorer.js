@@ -169,6 +169,7 @@ export function monta(radice, ctx) {
       testid: 'risultati-gara',
       testidRiga: 'riga-risultato',
       didascalia: 'Classifica della sessione in ordine di arrivo',
+      minimo: 'min-w-[46rem]',
       righe,
       colonne: [
         { titolo: 'Pos.', num: true, classe: 'font-semibold', cella: (r) => el('span', { title: formato.esito(r.outcome) }, formato.posizioneOEsito(r)) },
@@ -196,6 +197,7 @@ export function monta(radice, ctx) {
       testid: 'risultati-gara',
       testidRiga: 'riga-risultato',
       didascalia: 'Classifica della qualifica',
+      minimo: 'min-w-[34rem]',
       righe,
       colonne: [
         { titolo: 'Pos.', num: true, classe: 'font-semibold', cella: (r) => r.position },

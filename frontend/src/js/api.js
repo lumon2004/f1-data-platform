@@ -59,6 +59,7 @@ export async function getJson(path, { params, signal, fetchImpl = globalThis.fet
  */
 export function messaggioErrore(errore) {
   if (!(errore instanceof ApiError)) return 'Si è verificato un errore imprevisto nella dashboard.';
+  if (errore.status >= 200 && errore.status < 300) return `L'API ha risposto, ma con dati in una forma inattesa. ${errore.message}`;
   if (errore.status === 0) {
     return "L'API non risponde. Controlla che il backend sia avviato e raggiungibile, poi riprova.";
   }
@@ -68,6 +69,21 @@ export function messaggioErrore(errore) {
   if (errore.status === 404) return `Dato non trovato. ${errore.message}`;
   if (errore.status === 400) return `Richiesta non valida. ${errore.message}`;
   return `L'API ha risposto con un errore (${errore.status}). ${errore.message}`;
+}
+
+/**
+ * Titolo e testo del riquadro degli errori. Un guasto dell'API ("Dati non disponibili") è cosa diversa da
+ * un'eccezione interna della dashboard: quest'ultima non dipende dai dati e non si risolve riprovando.
+ */
+export function descriviErrore(errore) {
+  const interno = !(errore instanceof ApiError);
+  return {
+    interno,
+    titolo: interno ? 'Errore della dashboard' : 'Dati non disponibili',
+    testo: interno
+      ? 'Si è verificato un errore imprevisto nel codice della dashboard, non un guasto dell’API. Ricarica la pagina; i dettagli sono nella console del browser.'
+      : messaggioErrore(errore),
+  };
 }
 
 const seg = (value) => encodeURIComponent(String(value));
@@ -90,23 +106,39 @@ export function creaClient({ fetchImpl, cache = false } = {}) {
     return promessa;
   }
 
+  /** Endpoint che restituiscono una lista: una risposta 200 di altra forma è un errore dell'API, non "nessun dato". */
+  async function lista(path, params) {
+    const corpo = await get(path, params);
+    if (!Array.isArray(corpo)) throw new ApiError("Risposta dell'API non valida: era attesa una lista.", { status: 200, path: buildUrl(path, params) });
+    return corpo;
+  }
+
+  /** Endpoint che restituiscono un oggetto. */
+  async function oggetto(path, params) {
+    const corpo = await get(path, params);
+    if (corpo === null || typeof corpo !== 'object' || Array.isArray(corpo)) {
+      throw new ApiError("Risposta dell'API non valida: era atteso un oggetto.", { status: 200, path: buildUrl(path, params) });
+    }
+    return corpo;
+  }
+
   return {
-    seasons: () => get('/seasons'),
-    races: (year) => get(`/seasons/${seg(year)}/races`),
-    seasonDrivers: (year) => get(`/seasons/${seg(year)}/drivers`),
-    seasonTeams: (year) => get(`/seasons/${seg(year)}/teams`),
-    driverStandings: (year) => get(`/seasons/${seg(year)}/standings/drivers`),
-    teamStandings: (year) => get(`/seasons/${seg(year)}/standings/teams`),
-    race: (raceId) => get(`/races/${seg(raceId)}`),
+    seasons: () => lista('/seasons'),
+    races: (year) => lista(`/seasons/${seg(year)}/races`),
+    seasonDrivers: (year) => lista(`/seasons/${seg(year)}/drivers`),
+    seasonTeams: (year) => lista(`/seasons/${seg(year)}/teams`),
+    driverStandings: (year) => lista(`/seasons/${seg(year)}/standings/drivers`),
+    teamStandings: (year) => lista(`/seasons/${seg(year)}/standings/teams`),
+    race: (raceId) => oggetto(`/races/${seg(raceId)}`),
     /** `session`: 'race' (predefinita) oppure 'sprint'. */
-    raceResults: (raceId, session) => get(`/races/${seg(raceId)}/results`, { session: session === 'race' ? undefined : session }),
-    qualifying: (raceId) => get(`/races/${seg(raceId)}/qualifying`),
-    allLaps: (raceId) => get(`/races/${seg(raceId)}/laps`),
-    laps: (raceId, driverId) => get(`/races/${seg(raceId)}/laps/${seg(driverId)}`),
-    pitStops: (raceId) => get(`/races/${seg(raceId)}/pit-stops`),
-    stints: (raceId) => get(`/races/${seg(raceId)}/stints`),
-    driverStatistics: (driverId, season) => get(`/drivers/${seg(driverId)}/statistics`, { season }),
-    teamStatistics: (teamId, season) => get(`/teams/${seg(teamId)}/statistics`, { season }),
+    raceResults: (raceId, session) => lista(`/races/${seg(raceId)}/results`, { session: session === 'race' ? undefined : session }),
+    qualifying: (raceId) => lista(`/races/${seg(raceId)}/qualifying`),
+    allLaps: (raceId) => lista(`/races/${seg(raceId)}/laps`),
+    laps: (raceId, driverId) => lista(`/races/${seg(raceId)}/laps/${seg(driverId)}`),
+    pitStops: (raceId) => lista(`/races/${seg(raceId)}/pit-stops`),
+    stints: (raceId) => lista(`/races/${seg(raceId)}/stints`),
+    driverStatistics: (driverId, season) => oggetto(`/drivers/${seg(driverId)}/statistics`, { season }),
+    teamStatistics: (teamId, season) => oggetto(`/teams/${seg(teamId)}/statistics`, { season }),
     svuotaCache: () => memoria.clear(),
   };
 }

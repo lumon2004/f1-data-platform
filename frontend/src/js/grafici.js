@@ -4,7 +4,8 @@
 
 import { el, svg } from './dom.js';
 import * as formato from './format.js';
-import { CONTESTO, stileSerie } from './palette.js';
+import { CONTESTO, ETICHETTA_CONTESTO, stileSerie } from './palette.js';
+import { numeroStintVisibile } from './trasformazioni.js';
 
 const GRIGLIA = '#e2e8f0';
 const TESTO = '#0f172a';
@@ -70,7 +71,7 @@ export function disegnaTempi(dati, { larghezza, fasce = [], altezza = 380 }) {
   const Plot = globalThis.Plot;
   const n = dati.serie.length;
   // Sopra il riquadro: una riga di triangoli per pilota, più lo spazio per l'etichetta dell'asse.
-  const spazioFuoriScala = dati.fuoriScala > 0 ? n * 10 + 16 : 0;
+  const spazioFuoriScala = dati.fuoriScala > 0 ? n * 10 + 18 : 0;
   const minimo = (dati.minimo ?? 0) / 1000;
   const massimo = (dati.massimo ?? 1) / 1000;
   const margine = Math.max((massimo - minimo) * 0.05, 0.25);
@@ -110,7 +111,7 @@ export function disegnaTempi(dati, { larghezza, fasce = [], altezza = 380 }) {
         Plot.dot(fuori, {
           x: 'giro',
           frameAnchor: 'top',
-          dy: -(7 + (n - 1 - s.indice) * 10),
+          dy: -(9 + (n - 1 - s.indice) * 10),
           fill: stile.colore,
           symbol: 'triangle',
           r: 3.5,
@@ -175,16 +176,13 @@ export function disegnaPosizioni(dati, selezionati, { larghezza }) {
   const contesto = dati.serie.filter((s) => !indice.has(s.id));
   const evidenza = dati.serie.filter((s) => indice.has(s.id)).sort((a, b) => indice.get(a.id) - indice.get(b.id));
 
+  // Chi non è classificato (ritiro) ha la sigla dentro il grafico: un segno a croce marca la fine della
+  // linea e le sigle si disegnano per ultime, sopra tutte le linee, con un alone bianco.
+  const ritirato = (s) => s.classificato === false;
   const marchi = [Plot.frame({ stroke: GRIGLIA })];
   for (const s of contesto) {
-    marchi.push(Plot.line(s.punti, { x: 'giro', y: 'posizione', stroke: CONTESTO, strokeWidth: 1, strokeOpacity: 0.8 }));
+    marchi.push(Plot.line(s.punti, { x: 'giro', y: 'posizione', stroke: CONTESTO, strokeWidth: 1 }));
   }
-  marchi.push(
-    Plot.text(
-      contesto.map((s) => ({ ...s.punti.at(-1), sigla: s.sigla })),
-      { x: 'giro', y: 'posizione', text: 'sigla', dx: 6, textAnchor: 'start', fill: '#64748b', stroke: 'white', strokeWidth: 3, fontSize: 11 },
-    ),
-  );
   for (const s of evidenza) {
     const stile = stileSerie(indice.get(s.id));
     marchi.push(
@@ -196,6 +194,34 @@ export function disegnaPosizioni(dati, selezionati, { larghezza }) {
         strokeDasharray: stile.tratteggio ?? undefined,
       }),
       Plot.dot([s.punti[0], s.punti.at(-1)], { x: 'giro', y: 'posizione', fill: stile.colore, symbol: stile.simbolo, r: 4 }),
+    );
+  }
+  marchi.push(
+    Plot.dot(
+      contesto.filter(ritirato).map((s) => s.punti.at(-1)),
+      { x: 'giro', y: 'posizione', stroke: ETICHETTA_CONTESTO, strokeWidth: 1.5, symbol: 'times', r: 3 },
+    ),
+    ...[false, true].map((fuori) =>
+      Plot.text(
+        contesto.filter((s) => ritirato(s) === fuori).map((s) => ({ ...s.punti.at(-1), sigla: s.sigla })),
+        {
+          x: 'giro',
+          y: 'posizione',
+          text: 'sigla',
+          dx: fuori ? 9 : 6,
+          textAnchor: 'start',
+          fill: ETICHETTA_CONTESTO,
+          stroke: 'white',
+          strokeWidth: 5,
+          fontSize: 11,
+          fontWeight: fuori ? 600 : 400,
+        },
+      ),
+    ),
+  );
+  for (const s of evidenza) {
+    const stile = stileSerie(indice.get(s.id));
+    marchi.push(
       Plot.text([{ ...s.punti.at(-1), sigla: s.sigla }], {
         x: 'giro',
         y: 'posizione',
@@ -204,7 +230,7 @@ export function disegnaPosizioni(dati, selezionati, { larghezza }) {
         textAnchor: 'start',
         fill: stile.colore,
         stroke: 'white',
-        strokeWidth: 3,
+        strokeWidth: 5,
         fontWeight: 700,
         fontSize: 12,
       }),
@@ -258,12 +284,14 @@ export function disegnaStint(dati, { larghezza }) {
   const Plot = globalThis.Plot;
   const altezza = dati.righe.length * 22 + 56;
   const centro = (d) => (d.da + d.a) / 2;
+  const [MARGINE_SX, MARGINE_DX] = [48, 16];
+  const pxPerGiro = (larghezza - MARGINE_SX - MARGINE_DX) / Math.max(dati.giroMassimo, 1);
   const nodo = Plot.plot({
     width: larghezza,
     height: altezza,
     marginTop: 10,
-    marginLeft: 48,
-    marginRight: 16,
+    marginLeft: MARGINE_SX,
+    marginRight: MARGINE_DX,
     marginBottom: 40,
     style: STILE,
     x: {
@@ -286,7 +314,7 @@ export function disegnaStint(dati, { larghezza }) {
         insetBottom: 3,
       }),
       Plot.text(
-        dati.segmenti.filter((d) => d.giri >= 3),
+        dati.segmenti.filter((d) => numeroStintVisibile(d.giri, pxPerGiro)),
         { x: centro, y: 'riga', text: (d) => String(d.stint), fill: TESTO, fontSize: 10, fontWeight: 600 },
       ),
       Plot.tickX(dati.tacche, { x: 'giro', y: 'riga', stroke: TESTO, strokeWidth: 3 }),
@@ -313,12 +341,52 @@ export function disegnaStint(dati, { larghezza }) {
   return { nodo, punti: dati.segmenti.length + dati.tacche.length };
 }
 
-/** Distacco in pista tra A e B (positivo = A davanti). `punti` viene da distaccoCumulato(). */
-export function disegnaDistacco(punti, { larghezza, siglaA, siglaB, altezza = 300 }) {
+/**
+ * Distacco sul tempo di gara tra A e B a parità di giri (positivo = A davanti). `punti` viene da
+ * distaccoCumulato(); `ultimoGiro` è la lunghezza della gara, così una serie interrotta (doppiaggio, ritiro)
+ * si vede finire prima; `interruzione` è l'eventuale `{ giro, testo }` da segnare con una linea verticale.
+ */
+export function disegnaDistacco(punti, { larghezza, siglaA, siglaB, ultimoGiro, interruzione = null, altezza = 300 }) {
   const Plot = globalThis.Plot;
-  const ultimoGiro = Math.max(punti.at(-1)?.giro ?? 1, 2);
+  const fine = Math.max(ultimoGiro ?? 0, punti.at(-1)?.giro ?? 1, 2);
   const valori = punti.map((p) => p.ms / 1000);
   const estremo = Math.max(1, ...valori.map(Math.abs)) * 1.1;
+  const marchi = [
+    Plot.frame({ stroke: GRIGLIA }),
+    Plot.areaY(punti, { x: 'giro', y: (d) => d.ms / 1000, fill: '#94a3b8', fillOpacity: 0.25 }),
+    Plot.ruleY([0], { stroke: TESTO, strokeWidth: 1 }),
+    Plot.line(punti, { x: 'giro', y: (d) => d.ms / 1000, stroke: '#334155', strokeWidth: 2 }),
+    Plot.text([`Sopra lo zero: davanti ${siglaA}`], { frameAnchor: 'top-left', dx: 8, dy: 8, fill: '#475569', textAnchor: 'start' }),
+    Plot.text([`Sotto lo zero: davanti ${siglaB}`], { frameAnchor: 'bottom-left', dx: 8, dy: -8, fill: '#475569', textAnchor: 'start' }),
+  ];
+  if (interruzione) {
+    const aDestra = interruzione.giro < fine * 0.6;
+    marchi.push(
+      Plot.ruleX([interruzione.giro - 0.5], { stroke: TESTO, strokeWidth: 1.5, strokeDasharray: '4 3' }),
+      Plot.text([interruzione.testo], {
+        x: interruzione.giro - 0.5,
+        frameAnchor: 'top',
+        dy: 24,
+        dx: aDestra ? 6 : -6,
+        textAnchor: aDestra ? 'start' : 'end',
+        fill: TESTO,
+        stroke: 'white',
+        strokeWidth: 4,
+        fontWeight: 600,
+      }),
+    );
+  }
+  marchi.push(
+    Plot.tip(
+      punti,
+      Plot.pointer({
+        x: 'giro',
+        y: (d) => d.ms / 1000,
+        title: (d) =>
+          `Fine del giro ${d.giro}\n${d.ms === 0 ? 'Stesso tempo di gara' : `${d.ms > 0 ? siglaA : siglaB} davanti di ${formato.distacco(Math.abs(d.ms)).slice(1)} s`}`,
+      }),
+    ),
+  );
   const nodo = Plot.plot({
     width: larghezza,
     height: altezza,
@@ -329,8 +397,8 @@ export function disegnaDistacco(punti, { larghezza, siglaA, siglaB, altezza = 30
     style: STILE,
     x: {
       label: 'Giro',
-      domain: [0.5, ultimoGiro + 0.5],
-      ticks: Math.min(ultimoGiro, larghezza < 520 ? 6 : 14),
+      domain: [0.5, fine + 0.5],
+      ticks: Math.min(fine, larghezza < 520 ? 6 : 14),
       tickFormat: tickInteri,
     },
     y: {
@@ -339,26 +407,13 @@ export function disegnaDistacco(punti, { larghezza, siglaA, siglaB, altezza = 30
       grid: true,
       tickFormat: (v) => (v > 0 ? `+${v}` : v < 0 ? `−${Math.abs(v)}` : '0'),
     },
-    marks: [
-      Plot.frame({ stroke: GRIGLIA }),
-      Plot.areaY(punti, { x: 'giro', y: (d) => d.ms / 1000, fill: '#94a3b8', fillOpacity: 0.25 }),
-      Plot.ruleY([0], { stroke: TESTO, strokeWidth: 1 }),
-      Plot.line(punti, { x: 'giro', y: (d) => d.ms / 1000, stroke: '#334155', strokeWidth: 2 }),
-      Plot.text([`Sopra lo zero: davanti ${siglaA}`], { frameAnchor: 'top-left', dx: 8, dy: 8, fill: '#475569', textAnchor: 'start' }),
-      Plot.text([`Sotto lo zero: davanti ${siglaB}`], { frameAnchor: 'bottom-left', dx: 8, dy: -8, fill: '#475569', textAnchor: 'start' }),
-      Plot.tip(
-        punti,
-        Plot.pointer({
-          x: 'giro',
-          y: (d) => d.ms / 1000,
-          title: (d) =>
-            `Fine del giro ${d.giro}\n${d.ms === 0 ? 'Appaiati' : `${d.ms > 0 ? siglaA : siglaB} davanti di ${formato.distacco(Math.abs(d.ms)).slice(1)} s`}`,
-        }),
-      ),
-    ],
+    marks: marchi,
   });
   nodo.setAttribute('role', 'img');
-  nodo.setAttribute('aria-label', `Distacco in pista tra ${siglaA} e ${siglaB} alla fine di ogni giro: ${punti.length} giri.`);
+  nodo.setAttribute(
+    'aria-label',
+    `Distacco sul tempo di gara tra ${siglaA} e ${siglaB} alla fine di ogni giro: ${punti.length} giri.${interruzione ? ` ${interruzione.testo}.` : ''}`,
+  );
   return { nodo, punti: punti.length };
 }
 

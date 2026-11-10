@@ -349,6 +349,10 @@ Dettagli su licenza e provenienza: [docs/fonte-dati.md](docs/fonte-dati.md).
 
 La licenza CC0 è quella dichiarata su Kaggle; i termini originali di Ergast, che destinava i dati a usi non commerciali, non sono più consultabili. Il punto è descritto in [docs/fonte-dati.md](docs/fonte-dati.md#punto-aperto-i-termini-originali-di-ergast). Il repository ridistribuisce solo il dataset di esempio.
 
+### Librerie di terze parti
+
+La dashboard include e serve in locale, con i rispettivi file di licenza: [Observable Plot](https://observablehq.com/plot/) e [D3](https://d3js.org/) (licenza ISC), il carattere [Inter](https://rsms.me/inter/) (SIL Open Font License 1.1); gli stili sono generati con [Tailwind CSS](https://tailwindcss.com/) (licenza MIT).
+
 ## Disclaimer
 
 F1 Data Platform è un progetto non ufficiale, non affiliato a Formula 1, FIA o scuderie.

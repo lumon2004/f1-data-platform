@@ -22,6 +22,8 @@ test('la build produce pagina, moduli, CSS compilato, libreria dei grafici e car
     'js/main.js',
     'js/api.js',
     'js/grafici.js',
+    'js/stato.js',
+    'js/url.js',
     'js/viste/season-overview.js',
     'js/viste/race-explorer.js',
     'js/viste/driver-comparison.js',

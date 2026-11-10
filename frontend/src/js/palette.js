@@ -2,7 +2,8 @@
 // Ogni posizione ha colore, tratteggio e marcatore: l'informazione non passa mai dal solo colore.
 
 export const SFONDO = '#ffffff';
-export const CONTESTO = '#94a3b8'; // serie non selezionate
+export const CONTESTO = '#7c8aa0'; // serie non selezionate: linee sottili ma comunque ad almeno 3:1 sul bianco
+export const ETICHETTA_CONTESTO = '#475569'; // sigle delle serie non selezionate
 export const TESTO_SECONDARIO = '#475569';
 
 export const SERIE = [

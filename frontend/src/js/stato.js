@@ -1,6 +1,7 @@
 // Stato condiviso tra le viste: le scelte dei filtri si conservano passando da una vista all'altra.
+// Ogni modifica viene notificata a chi si è registrato con alCambio() (main.js la riporta nell'URL).
 
-export const stato = {
+const valori = {
   /** Stagioni disponibili (risposta di /api/seasons), dalla più recente. */
   stagioni: [],
   stagione: null,
@@ -13,8 +14,39 @@ export const stato = {
   scuderiaB: null,
   /** Piloti in evidenza nei grafici di Race analysis; null = selezione predefinita per la gara. */
   pilotiAnalisi: null,
-  scalaCompleta: false,
+  /** "Scala completa" dei tempi sul giro: ogni vista ha il proprio interruttore. */
+  scalaCompletaAnalisi: false,
+  scalaCompletaConfronto: false,
 };
+
+const ascoltatori = new Set();
+let notificaInCoda = false;
+
+function notifica() {
+  if (notificaInCoda) return;
+  notificaInCoda = true;
+  // Più modifiche nello stesso passaggio producono una sola notifica.
+  queueMicrotask(() => {
+    notificaInCoda = false;
+    for (const fn of ascoltatori) fn();
+  });
+}
+
+export const stato = new Proxy(valori, {
+  set(oggetto, chiave, valore) {
+    if (!Object.hasOwn(oggetto, chiave)) throw new TypeError(`Chiave di stato sconosciuta: ${String(chiave)}`);
+    const cambiato = oggetto[chiave] !== valore;
+    oggetto[chiave] = valore;
+    if (cambiato) notifica();
+    return true;
+  },
+});
+
+/** Registra una funzione chiamata (una volta per passaggio) dopo ogni modifica dello stato. */
+export function alCambio(fn) {
+  ascoltatori.add(fn);
+  return () => ascoltatori.delete(fn);
+}
 
 /** Cambia stagione: le scelte che dipendono dalla gara si azzerano. */
 export function impostaStagione(anno) {
@@ -31,7 +63,11 @@ export function impostaGara(garaId) {
   stato.pilotiAnalisi = null;
 }
 
-/** Contatore dei caricamenti: una risposta arrivata dopo una nuova richiesta va ignorata. */
+/**
+ * Contatore dei caricamenti: protegge dalle risposte in ritardo. Chi avvia un caricamento prende un turno
+ * con nuovo(); quando la risposta arriva, la usa solo se valido(turno) è ancora vero, cioè se nel frattempo
+ * non è partito un caricamento più recente.
+ */
 export function creaTurni() {
   let corrente = 0;
   return {

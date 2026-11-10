@@ -2,28 +2,37 @@
 // e confronto diretto in una gara (tempi sul giro e distacco in pista).
 
 import { api } from '../api.js';
-import { areaGrafico, barraFiltri, barreConfronto, campoSelect, caricamento, filtroStagione, grigliaStatistiche, intestazioneVista, legendaSerie, lettera, messaggio, riempiSelect, scheda, svuotaSelect, tabella } from '../componenti.js';
+import { areaGrafico, barraFiltri, barreConfronto, campoSelect, filtroStagione, grigliaStatistiche, interruttoreScala, intestazioneVista, legendaSerie, lettera, messaggio, noteTempi, riempiSelect, scheda, svuotaSelect, tabella } from '../componenti.js';
 import { el, riempi } from '../dom.js';
 import * as formato from '../format.js';
 import { disegnaDistacco, disegnaTempi, montaGrafico, smontaGrafico } from '../grafici.js';
 import { creaTurni, impostaGara, scegliValido, stato } from '../stato.js';
-import { confronto, distaccoCumulato, serieTempi } from '../trasformazioni.js';
+import { confronto, distaccoCumulato, giriLenti, giroMassimo, serieTempi } from '../trasformazioni.js';
 
-const METRICHE = [
-  { chiave: 'punti', etichetta: 'Punti (gare + sprint)', valore: (s) => (s ? s.points + s.sprintPoints : null) },
-  { chiave: 'wins', etichetta: 'Vittorie' },
-  { chiave: 'podiums', etichetta: 'Podi' },
-  { chiave: 'poles', etichetta: 'Pole position' },
-  { chiave: 'fastestLaps', etichetta: 'Giri veloci' },
+/**
+ * Metriche delle barre di confronto. I punti di campionato (gare + sprint) sono il campo `points` della
+ * classifica dell'API: nessuna somma nel browser. Gli altri valori sono campi delle statistiche.
+ */
+export const METRICHE = [
+  { chiave: 'punti', etichetta: 'Punti di campionato (gare + sprint)', valore: (x) => x?.classifica?.points ?? null },
+  { chiave: 'wins', etichetta: 'Vittorie', valore: (x) => x?.statistiche.wins },
+  { chiave: 'podiums', etichetta: 'Podi', valore: (x) => x?.statistiche.podiums },
+  { chiave: 'poles', etichetta: 'Pole position', valore: (x) => x?.statistiche.poles },
+  { chiave: 'fastestLaps', etichetta: 'Giri veloci', valore: (x) => x?.statistiche.fastestLaps },
 ];
 
-/** Voci della scheda di un pilota o di una scuderia a partire dalle statistiche dell'API. */
-export function vociStatistiche(s) {
+/**
+ * Voci della scheda di un pilota o di una scuderia a partire dalle statistiche dell'API.
+ * Le etichette seguono le definizioni dichiarate nell'OpenAPI, che per una scuderia sono diverse:
+ * `races` e `starts` contano i Gran Premi (non le vetture), `podiums` i piazzamenti.
+ */
+export function vociStatistiche(s, tipo = 'pilota') {
+  const scuderia = tipo === 'scuderia';
   return [
-    ['Gare', formato.intero(s.races)],
-    ['Partenze', formato.intero(s.starts)],
+    [scuderia ? 'Gran Premi' : 'Gare', formato.intero(s.races)],
+    [scuderia ? 'GP al via' : 'Partenze', formato.intero(s.starts)],
     ['Vittorie', formato.intero(s.wins)],
-    ['Podi', formato.intero(s.podiums)],
+    [scuderia ? 'Piazz. a podio' : 'Podi', formato.intero(s.podiums)],
     ['Pole', formato.intero(s.poles)],
     ['Giri veloci', formato.intero(s.fastestLaps)],
     ['Ritiri', formato.intero(s.retirements)],
@@ -31,8 +40,15 @@ export function vociStatistiche(s) {
     ['Punti sprint', formato.punti(s.sprintPoints)],
     ['Miglior arrivo', formato.posizione(s.bestFinish)],
     ['Media arrivo', formato.media(s.averageFinish)],
-    ['Media griglia', formato.media(s.averageGrid)],
+    ['Media griglia*', formato.media(s.averageGrid)],
   ];
+}
+
+/** Nota sotto le statistiche: dice che cosa contano le voci che a prima vista sono ambigue. */
+export function notaStatistiche(tipo = 'pilota') {
+  const griglia = '* Media griglia: media delle caselle di partenza, escluse le partenze dalla pit lane e le mancate partenze.';
+  if (tipo !== 'scuderia') return `${griglia} Gare: Gran Premi in cui il pilota compare in classifica; Partenze: quelli in cui ha preso il via.`;
+  return `${griglia} Gran Premi: quelli con almeno una vettura della scuderia in classifica; GP al via: quelli in cui almeno una vettura ha preso il via (non il numero di vetture partite). Piazzamenti a podio e ritiri contano ogni vettura.`;
 }
 
 export function monta(radice, ctx) {
@@ -77,17 +93,33 @@ export function monta(radice, ctx) {
   });
   const inGara = scheda({
     titolo: 'Confronto in una gara',
-    nota: 'Risultato, tempi sul giro e distacco in pista dei due piloti nel Gran Premio scelto.',
+    nota: 'Risultato, tempi sul giro e distacco sul tempo di gara dei due piloti nel Gran Premio scelto.',
     azioni: gara.campo,
   });
+  /** Ultimi dati di gara caricati: servono a ridisegnare quando cambia "Scala completa". */
+  let ultimaGara = null;
+  const titoloTempi = el(
+    'div',
+    { class: 'flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-t border-slate-200 px-4 pt-3' },
+    el('div', {}, el('h3', { class: 'text-sm font-semibold' }, 'Tempi sul giro'), el('p', { class: 'text-xs text-slate-600' }, 'Più in basso = giro più veloce. La scala segue il passo di gara: i giri molto più lenti restano segnalati sopra il grafico.')),
+    interruttoreScala(stato.scalaCompletaConfronto, (attivo) => {
+      stato.scalaCompletaConfronto = attivo;
+      if (ultimaGara) mostraTempi(ultimaGara);
+    }),
+  );
   const esiti = el('div', {});
   const legenda = el('div', {});
   const graficoTempi = areaGrafico('grafico-confronto-tempi');
-  const noteTempi = el('p', { class: 'px-4 pt-1 pb-3 text-xs text-slate-600' });
-  const titoloDistacco = el('h3', { class: 'border-t border-slate-200 px-4 pt-3 text-sm font-semibold' }, 'Distacco in pista');
-  const notaDistacco = el('p', { class: 'px-4 text-xs text-slate-600' }, 'Differenza tra i tempi cumulati alla fine di ogni giro. I salti corrispondono di solito alle soste ai box.');
+  const areaNote = el('div', { class: 'space-y-1 px-4 pt-1 pb-3 text-xs text-slate-600' });
+  const titoloDistacco = el('h3', { class: 'border-t border-slate-200 px-4 pt-3 text-sm font-semibold' }, 'Distacco sul tempo di gara, a parità di giri');
+  const notaDistacco = el(
+    'p',
+    { class: 'max-w-4xl px-4 text-xs text-slate-600' },
+    'Alla fine di ogni giro, differenza tra i tempi di gara dei due piloti dal via fino a quel giro. Finché nessuno dei due è doppiato coincide con il distacco in pista; i salti corrispondono di solito alle soste ai box. La serie si ferma quando uno dei due viene doppiato o non ha più giri.',
+  );
+  const noteDistacco = el('p', { class: 'px-4 pt-1 pb-3 text-xs font-medium text-slate-700', testid: 'nota-distacco' });
   const graficoDistacco = areaGrafico('grafico-confronto-distacco');
-  inGara.corpo.append(esiti, legenda, graficoTempi.involucro, noteTempi, titoloDistacco, notaDistacco, graficoDistacco.involucro);
+  inGara.corpo.append(esiti, titoloTempi, legenda, graficoTempi.involucro, areaNote, titoloDistacco, notaDistacco, graficoDistacco.involucro, noteDistacco);
 
   radice.append(
     intestazioneVista('Driver comparison', 'Due piloti della stessa stagione a confronto: statistiche calcolate dall’API e andamento in una gara.'),
@@ -106,9 +138,11 @@ export function monta(radice, ctx) {
   }
 
   function attesaGara(testo) {
+    ultimaGara = null;
     riempi(esiti);
     riempi(legenda);
-    riempi(noteTempi);
+    riempi(areaNote);
+    riempi(noteDistacco);
     smontaGrafico(graficoTempi.area, testo);
     smontaGrafico(graficoDistacco.area, testo);
   }
@@ -164,7 +198,14 @@ export function monta(radice, ctx) {
       mostraScheda('b', b);
       riempi(
         barre.corpo,
-        barreConfronto(confronto(a, b, METRICHE), { nomeA: a.driver.name, nomeB: b.driver.name, formati: { punti: formato.punti } }),
+        barreConfronto(
+          confronto(
+            { statistiche: a, classifica: classifica.find((r) => r.driver.id === a.driver.id) },
+            { statistiche: b, classifica: classifica.find((r) => r.driver.id === b.driver.id) },
+            METRICHE,
+          ),
+          { nomeA: a.driver.name, nomeB: b.driver.name, formati: { punti: formato.punti } },
+        ),
         stato.pilotaA === stato.pilotaB ? el('p', { class: 'px-4 pb-4 text-xs text-slate-600' }, 'Hai scelto lo stesso pilota per A e B.') : null,
       );
     } catch (errore) {
@@ -198,7 +239,7 @@ export function monta(radice, ctx) {
           ? el('p', { class: 'text-right text-sm tabular-nums' }, el('span', { class: 'block font-semibold' }, `${formato.posizione(riga.position)} in classifica`), el('span', { class: 'secondario block' }, `${formato.punti(riga.points)} punti`))
           : null,
       ),
-      el('div', { class: 'px-4 py-4' }, grigliaStatistiche(vociStatistiche(s))),
+      el('div', { class: 'space-y-3 px-4 py-4' }, grigliaStatistiche(vociStatistiche(s, 'pilota')), el('p', { class: 'text-xs text-slate-600' }, notaStatistiche('pilota'))),
     );
   }
 
@@ -210,14 +251,12 @@ export function monta(radice, ctx) {
     if (!garaId || !idA || !idB) return attesaGara('Nessuna gara da confrontare.');
     attesaGara('Caricamento…');
     try {
-      const [giriA, giriB, risultati, soste] = await Promise.all([
-        api.laps(garaId, idA),
-        idA === idB ? Promise.resolve([]) : api.laps(garaId, idB),
-        api.raceResults(garaId, 'race'),
-        api.pitStops(garaId),
-      ]);
+      // Tutti i giri della gara in una richiesta: oltre ai due piloti servono quelli del gruppo,
+      // per le fasce dei giri lenti (come in Race analysis).
+      const [tuttiIGiri, risultati, soste] = await Promise.all([api.allLaps(garaId), api.raceResults(garaId, 'race'), api.pitStops(garaId)]);
       if (!turniGara.valido(turno) || !ctx.attiva()) return;
-      mostraGara({ idA, idB, giriA, giriB: idA === idB ? giriA : giriB, risultati, soste });
+      const giriDi = (id) => tuttiIGiri.find((p) => p.driver.id === id)?.laps ?? [];
+      mostraGara({ idA, idB, giriA: giriDi(idA), giriB: giriDi(idB), risultati, soste, tuttiIGiri });
     } catch (errore) {
       if (!turniGara.valido(turno) || !ctx.attiva()) return;
       attesaGara('Dati della gara non disponibili.');
@@ -225,7 +264,7 @@ export function monta(radice, ctx) {
     }
   }
 
-  function mostraGara({ idA, idB, giriA, giriB, risultati, soste }) {
+  function mostraGara({ idA, idB, giriA, giriB, risultati, soste, tuttiIGiri }) {
     const lati = [
       { lato: 'a', id: idA, giri: giriA },
       { lato: 'b', id: idB, giri: giriB },
@@ -235,6 +274,7 @@ export function monta(radice, ctx) {
       esiti,
       tabella({
         didascalia: 'Risultato dei due piloti nella gara scelta',
+        minimo: 'min-w-[46rem]',
         righe: lati,
         colonne: [
           { titolo: '', cella: (x) => lettera(x.lato) },
@@ -250,31 +290,59 @@ export function monta(radice, ctx) {
       }),
     );
 
+    ultimaGara = { idA, idB, lati, giriA, giriB, soste, tuttiIGiri };
+    mostraTempi(ultimaGara);
+    mostraDistacco(ultimaGara);
+  }
+
+  function mostraTempi({ idA, idB, lati, soste, tuttiIGiri }) {
     const distinti = idA === idB ? lati.slice(0, 1) : lati;
     const pilotiGiri = distinti.map((x) => ({ driver: x.pilota ?? { id: x.id, name: `Pilota ${x.id}` }, team: x.risultato?.team ?? x.pilota?.team, laps: x.giri }));
-    const serie = serieTempi(pilotiGiri, { selezionati: distinti.map((x) => x.id), scalaCompleta: stato.scalaCompleta, soste });
-    const senzaGiri = lati.filter((x) => x.giri.length === 0).map((x) => x.pilota?.name ?? `Pilota ${x.lato.toUpperCase()}`);
-    riempi(noteTempi);
+    const serie = serieTempi(pilotiGiri, { selezionati: distinti.map((x) => x.id), scalaCompleta: stato.scalaCompletaConfronto, soste });
+    const senzaGiri = distinti.filter((x) => x.giri.length === 0).map((x) => x.pilota?.name ?? `Pilota ${x.lato.toUpperCase()}`);
     if (serie.puntiDisegnati === 0) {
       riempi(legenda);
-      smontaGrafico(graficoTempi.area, 'Nessuno dei due piloti ha giri cronometrati in questa gara.');
-    } else {
-      riempi(legenda, legendaSerie(serie.serie));
-      montaGrafico(graficoTempi.area, (larghezza) => disegnaTempi(serie, { larghezza, altezza: 320 }));
-      const note = [];
-      if (serie.fuoriScala > 0) note.push(`${serie.fuoriScala} ${serie.fuoriScala === 1 ? 'giro è' : 'giri sono'} oltre la scala (più di ${formato.tempo(serie.soglia)}) e sono segnati con un triangolo sopra il grafico.`);
-      if (senzaGiri.length && idA !== idB) note.push(`${[...new Set(senzaGiri)].join(' e ')}: nessun giro cronometrato in questa gara.`);
-      noteTempi.textContent = note.join(' ');
+      riempi(areaNote);
+      return smontaGrafico(graficoTempi.area, 'Nessuno dei due piloti ha giri cronometrati in questa gara.');
     }
+    const fasce = giriLenti(tuttiIGiri);
+    riempi(legenda, legendaSerie(serie.serie));
+    montaGrafico(graficoTempi.area, (larghezza) => disegnaTempi(serie, { larghezza, fasce, altezza: 320 }));
+    riempi(
+      areaNote,
+      noteTempi(serie, fasce),
+      senzaGiri.length ? el('p', {}, `${senzaGiri.join(' e ')}: nessun giro cronometrato in questa gara.`) : null,
+    );
+  }
 
-    const distacco = idA === idB ? [] : distaccoCumulato(giriA, giriB);
-    if (!distacco.length) {
-      const motivo = idA === idB ? 'Scegli due piloti diversi per vedere il distacco.' : 'Distacco non calcolabile: almeno uno dei due piloti non ha giri cronometrati in questa gara.';
-      return smontaGrafico(graficoDistacco.area, motivo);
-    }
+  function mostraDistacco({ idA, idB, lati, giriA, giriB, tuttiIGiri }) {
     const [a, b] = lati;
+    const nome = (x) => x.pilota?.name ?? `Pilota ${x.lato.toUpperCase()}`;
+    riempi(noteDistacco);
+    if (idA === idB) return smontaGrafico(graficoDistacco.area, 'Scegli due piloti diversi per vedere il distacco.');
+    const { punti, doppiaggio } = distaccoCumulato(giriA, giriB);
+    if (!punti.length) {
+      return smontaGrafico(graficoDistacco.area, 'Distacco non calcolabile: almeno uno dei due piloti non ha giri cronometrati in questa gara.');
+    }
+    const ultimoGiro = giroMassimo(tuttiIGiri);
+    const ultimoComune = punti.at(-1).giro;
+    let interruzione = null;
+    if (doppiaggio) {
+      const [doppiato, altro] = doppiaggio.doppiato === 'a' ? [a, b] : [b, a];
+      interruzione = { giro: doppiaggio.giro, testo: `Giro ${doppiaggio.giro}: ${doppiato.pilota ? formato.sigla(doppiato.pilota) : nome(doppiato)} doppiato` };
+      noteDistacco.textContent = `Nel giro ${doppiaggio.giro} ${nome(doppiato)} viene doppiato da ${nome(altro)}: il confronto si ferma al giro ${ultimoComune}, perché da lì la differenza a parità di giri non descrive più la distanza in pista.`;
+    } else if (ultimoComune < ultimoGiro) {
+      const fermi = lati.filter((x) => x.giri.length === ultimoComune);
+      noteDistacco.textContent = `Il confronto si ferma al giro ${ultimoComune}: ${fermi.length ? fermi.map(nome).join(' e ') : 'uno dei due piloti'} non ha giri cronometrati oltre quel punto.`;
+    }
     montaGrafico(graficoDistacco.area, (larghezza) =>
-      disegnaDistacco(distacco, { larghezza, siglaA: a.pilota ? formato.sigla(a.pilota) : 'A', siglaB: b.pilota ? formato.sigla(b.pilota) : 'B' }),
+      disegnaDistacco(punti, {
+        larghezza,
+        ultimoGiro,
+        interruzione,
+        siglaA: a.pilota ? formato.sigla(a.pilota) : 'A',
+        siglaB: b.pilota ? formato.sigla(b.pilota) : 'B',
+      }),
     );
   }
 }

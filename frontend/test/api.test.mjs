@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ApiError, buildUrl, creaClient, getJson, messaggioErrore } from '../src/js/api.js';
+import { ApiError, buildUrl, creaClient, descriviErrore, getJson, messaggioErrore } from '../src/js/api.js';
 
 const risposta = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status });
 
 /** Finto fetch che registra gli URL richiesti. */
-function registra(rispondi = () => risposta(200, {})) {
+function registra(rispondi = (url) => risposta(200, /\/(races\/[^/]+|statistics(\?.*)?)$/.test(url) && !/\/seasons\//.test(url) ? {} : [])) {
   const chiamate = [];
   const fetchImpl = async (url) => {
     chiamate.push(url);
@@ -144,4 +144,35 @@ test("messaggioErrore distingue API assente, non disponibile, dato non trovato",
   assert.match(messaggioErrore(new ApiError('Errore interno', { status: 500 })), /errore \(500\)/);
   // un errore che non viene dall'API non espone dettagli interni
   assert.equal(messaggioErrore(new TypeError('x is undefined')), 'Si è verificato un errore imprevisto nella dashboard.');
+});
+
+test("descriviErrore: un guasto dell'API e un errore interno della dashboard hanno titoli diversi", () => {
+  const api = descriviErrore(new ApiError('Database non raggiungibile', { status: 503 }));
+  assert.equal(api.interno, false);
+  assert.equal(api.titolo, 'Dati non disponibili');
+  assert.match(api.testo, /503.*Database non raggiungibile/);
+
+  const interno = descriviErrore(new TypeError("Cannot read properties of undefined (reading 'laps')"));
+  assert.equal(interno.interno, true);
+  assert.equal(interno.titolo, 'Errore della dashboard');
+  assert.notEqual(interno.titolo, api.titolo);
+  assert.doesNotMatch(interno.testo, /undefined|laps/, "il testo non espone i dettagli dell'eccezione");
+  assert.match(interno.testo, /non un guasto dell’API/);
+});
+
+test('una risposta 200 di forma inattesa è un errore, non una lista vuota', async () => {
+  const api = creaClient({ fetchImpl: async () => risposta(200, { non: 'una lista' }) });
+  await assert.rejects(api.races(2023), (err) => {
+    assert.ok(err instanceof ApiError);
+    assert.equal(err.status, 200);
+    assert.match(err.message, /attesa una lista/);
+    assert.match(messaggioErrore(err), /forma inattesa/);
+    return true;
+  });
+  const liste = creaClient({ fetchImpl: async () => risposta(200, []) });
+  await assert.rejects(liste.race(7), /atteso un oggetto/);
+  await assert.rejects(liste.driverStatistics(1, 2023), /atteso un oggetto/);
+  assert.deepEqual(await liste.stints(7), [], 'una lista vuota resta una risposta valida');
+  const nullo = creaClient({ fetchImpl: async () => risposta(200, null) });
+  await assert.rejects(nullo.race(7), ApiError);
 });

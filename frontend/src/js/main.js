@@ -1,10 +1,11 @@
 // Avvio della dashboard: navigazione tra le viste, caricamento delle stagioni, riquadro degli errori dell'API.
 // Nel DOM c'è sempre una sola vista: così ogni data-testid dei filtri corrisponde a un solo elemento.
 
-import { ApiError, api, messaggioErrore } from './api.js';
+import { api, descriviErrore } from './api.js';
 import { intestazioneVista } from './componenti.js';
 import { el } from './dom.js';
-import { stato } from './stato.js';
+import { alCambio, impostaStagione, stato } from './stato.js';
+import { leggiHash, scriviHash } from './url.js';
 import { monta as seasonOverview } from './viste/season-overview.js';
 import { monta as raceExplorer } from './viste/race-explorer.js';
 import { monta as driverComparison } from './viste/driver-comparison.js';
@@ -22,20 +23,42 @@ const VISTA_PREDEFINITA = 'season-overview';
 
 const radice = document.getElementById('vista');
 const riquadroErrore = document.getElementById('errore-api');
+const titoloErrore = document.getElementById('errore-api-titolo');
 const testoErrore = document.getElementById('errore-api-testo');
 
 let generazione = 0;
 let caricamentoStagioni = null;
 
 function vistaCorrente() {
-  const id = window.location.hash.replace(/^#/, '');
-  return Object.hasOwn(VISTE, id) ? id : VISTA_PREDEFINITA;
+  return leggiHash(window.location.hash).vista ?? VISTA_PREDEFINITA;
+}
+
+/**
+ * Porta nello stato le scelte scritte nell'URL (link condiviso, ricaricamento, tasto "indietro").
+ * Qui si controlla solo la stagione; gara, piloti e scuderie li convalida la vista rispetto ai dati
+ * della stagione, ripiegando sui predefiniti se non esistono.
+ */
+function applicaUrl() {
+  const { scelte } = leggiHash(window.location.hash);
+  if (stato.stagioni.some((s) => s.year === scelte.stagione)) impostaStagione(scelte.stagione);
+  for (const [chiave, valore] of Object.entries(scelte)) {
+    if (chiave !== 'stagione') stato[chiave] = valore;
+  }
+}
+
+/** Riporta nell'URL le scelte correnti, senza creare voci nella cronologia né far ripartire la vista. */
+function aggiornaUrl() {
+  if (!stato.stagioni.length) return;
+  const atteso = scriviHash(vistaCorrente(), stato);
+  if (window.location.hash !== atteso) window.history.replaceState(null, '', atteso);
 }
 
 function mostraErrore(errore) {
+  const { interno, titolo, testo } = descriviErrore(errore);
   // Un errore che non viene dall'API è un difetto della dashboard: resta visibile anche in console.
-  if (!(errore instanceof ApiError)) console.error(errore);
-  testoErrore.textContent = messaggioErrore(errore);
+  if (interno) console.error(errore);
+  titoloErrore.textContent = titolo;
+  testoErrore.textContent = testo;
   riquadroErrore.hidden = false;
 }
 
@@ -62,6 +85,9 @@ function caricaStagioni() {
     .then((stagioni) => {
       stato.stagioni = stagioni;
       stato.stagione = stagioni[0]?.year ?? null;
+      // Subito, nello stesso passaggio: altrimenti la stagione predefinita verrebbe riscritta nell'URL
+      // prima di aver letto quella richiesta dal link.
+      applicaUrl();
       return { ok: true };
     })
     .catch((errore) => {
@@ -97,6 +123,7 @@ async function mostraVista() {
     }
   }
 
+  applicaUrl();
   radice.replaceChildren();
   const ctx = {
     attiva: () => mia === generazione,
@@ -110,7 +137,20 @@ async function mostraVista() {
   } catch (errore) {
     mostraErrore(errore);
   }
+  aggiornaUrl();
 }
+
+alCambio(aggiornaUrl);
+
+// Rete di sicurezza: un'eccezione sfuggita a una vista (anche dentro una promessa) non deve lasciare
+// la pagina a metà senza spiegazioni. Compare il riquadro, con il titolo degli errori interni.
+window.addEventListener('unhandledrejection', (evento) => {
+  evento.preventDefault();
+  mostraErrore(evento.reason instanceof Error ? evento.reason : new Error(String(evento.reason)));
+});
+window.addEventListener('error', (evento) => {
+  if (evento.error instanceof Error) mostraErrore(evento.error);
+});
 
 document.getElementById('errore-api-riprova').addEventListener('click', () => mostraVista());
 window.addEventListener('hashchange', () => mostraVista());

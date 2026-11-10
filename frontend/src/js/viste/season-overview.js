@@ -21,7 +21,7 @@ export function monta(radice, ctx) {
   });
   const costruttori = scheda({
     titolo: 'Classifica costruttori',
-    nota: 'La barra mostra i punti rispetto alla prima scuderia: tinta piena per le gare, righe per le sprint.',
+    nota: 'Punti nelle gare e nelle sprint. Su schermo largo una barra li mostra rispetto alla prima scuderia: tinta piena per le gare, righe per le sprint.',
     classe: 'lg:col-span-12',
   });
 
@@ -82,8 +82,8 @@ export function monta(radice, ctx) {
         didascalia: 'Calendario della stagione con i vincitori',
         righe: gare,
         colonne: [
-          { titolo: 'Round', num: true, cella: (g) => g.round },
-          { titolo: 'Data', classe: 'whitespace-nowrap', cella: (g) => formato.dataCorta(g.date) },
+          { titolo: 'N.', num: true, cella: (g) => g.round },
+          { titolo: 'Data', classe: 'whitespace-nowrap', soloLargo: true, cella: (g) => formato.dataCorta(g.date) },
           {
             titolo: 'Gran Premio',
             cella: (g) => [
@@ -97,12 +97,22 @@ export function monta(radice, ctx) {
                 g.name,
               ),
               g.hasSprint ? el('span', { class: 'etichetta-tag' }, 'Sprint') : null,
-              el('span', { class: 'secondario block' }, [g.circuit.name, g.circuit.country].filter(Boolean).join(' · ')),
+              // Su schermo stretto la colonna della data non c'è: la data sta qui, e il circuito lascia il posto al paese.
+              el('span', { class: 'secondario block sm:hidden' }, [formato.dataCorta(g.date), g.circuit.country].filter(Boolean).join(' · ')),
+              el('span', { class: 'secondario hidden sm:block' }, [g.circuit.name, g.circuit.country].filter(Boolean).join(' · ')),
             ],
           },
           {
             titolo: 'Vincitore',
-            cella: (g) => (g.winner ? dueRighe(g.winner.driver.name, g.winner.team.name) : el('span', { class: 'secondario' }, 'Nessun risultato')),
+            // Su schermo stretto basta il cognome: il nome completo manderebbe a capo ogni riga.
+            cella: (g) =>
+              g.winner
+                ? [
+                    el('span', { class: 'block font-medium sm:hidden' }, g.winner.driver.familyName),
+                    el('span', { class: 'hidden font-medium sm:block' }, g.winner.driver.name),
+                    el('span', { class: 'secondario block' }, g.winner.team.name),
+                  ]
+                : el('span', { class: 'secondario' }, 'Nessun risultato'),
           },
         ],
       }),
@@ -135,6 +145,7 @@ export function monta(radice, ctx) {
       costruttori.corpo,
       tabella({
         didascalia: 'Classifica costruttori',
+        minimo: 'min-w-[30rem]',
         righe: classifica,
         colonne: [
           { titolo: 'Pos.', num: true, cella: (r) => r.position },
@@ -142,6 +153,7 @@ export function monta(radice, ctx) {
           { titolo: 'Punti', num: true, classe: 'font-semibold', cella: (r) => formato.punti(r.points) },
           {
             titolo: 'Gare + sprint',
+            soloLargo: true, // la barra ripete i numeri delle colonne accanto: su schermo stretto si omette
             classe: 'w-1/2 align-middle',
             cella: (r) =>
               el(

@@ -1,7 +1,7 @@
 // Race analysis: tempi sul giro, posizioni, stint e pit stop della gara scelta.
 
 import { api } from '../api.js';
-import { areaGrafico, barraFiltri, campoSelect, filtroStagione, intestazioneVista, legendaSerie, messaggio, riempiSelect, scheda, svuotaSelect, tabella } from '../componenti.js';
+import { areaGrafico, barraFiltri, campoSelect, filtroStagione, interruttoreScala, intestazioneVista, legendaSerie, messaggio, noteTempi, riempiSelect, scheda, svuotaSelect, tabella } from '../componenti.js';
 import { el, riempi } from '../dom.js';
 import * as formato from '../format.js';
 import { campioneSerie, disegnaPosizioni, disegnaStint, disegnaTempi, montaGrafico, smontaGrafico } from '../grafici.js';
@@ -11,8 +11,6 @@ import { alternaSelezione, giriLenti, selezionePredefinita, seriePosizioni, seri
 
 const NOTA_MESCOLE =
   'La fonte dei dati non contiene le mescole: gli stint sono ricavati dai pit stop registrati (tratto tra due soste) e sono solo numerati.';
-
-const elencoGiri = (intervalli) => intervalli.map((i) => (i.da === i.a ? `${i.da}` : `${i.da}–${i.a}`)).join(', ');
 
 export function monta(radice, ctx) {
   const turniStagione = creaTurni();
@@ -38,21 +36,18 @@ export function monta(radice, ctx) {
     azioni: el('button', { type: 'button', class: 'rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50', on: { click: () => seleziona(null) } }, 'Ripristina i primi tre'),
   });
 
-  const scala = el('input', { type: 'checkbox', class: 'h-4 w-4 accent-sky-700' });
-  scala.checked = stato.scalaCompleta;
-  scala.addEventListener('change', () => {
-    stato.scalaCompleta = scala.checked;
-    disegnaGraficoTempi();
-  });
   const tempi = scheda({
     titolo: 'Tempi sul giro',
     nota: 'Più in basso = giro più veloce. La scala segue il passo di gara: i giri molto più lenti restano segnalati sopra il grafico.',
-    azioni: el('label', { class: 'flex items-center gap-2 text-sm' }, scala, 'Scala completa'),
+    azioni: interruttoreScala(stato.scalaCompletaAnalisi, (attivo) => {
+      stato.scalaCompletaAnalisi = attivo;
+      disegnaGraficoTempi();
+    }),
   });
   const graficoTempi = areaGrafico('grafico-tempi-giro');
   const legendaTempi = el('div', {});
-  const noteTempi = el('div', { class: 'space-y-1 px-4 pt-2 pb-4 text-xs text-slate-600' });
-  tempi.corpo.append(legendaTempi, graficoTempi.involucro, noteTempi);
+  const areaNote = el('div', { class: 'space-y-1 px-4 pt-2 pb-4 text-xs text-slate-600' });
+  tempi.corpo.append(legendaTempi, graficoTempi.involucro, areaNote);
 
   const posizioni = scheda({
     titolo: 'Posizioni giro per giro',
@@ -62,7 +57,7 @@ export function monta(radice, ctx) {
   const legendaPosizioni = el('div', {});
   posizioni.corpo.append(legendaPosizioni, graficoPosizioni.involucro);
 
-  const stint = scheda({ titolo: 'Stint e pit stop', nota: 'Una riga per pilota in ordine d’arrivo: segmenti numerati per gli stint, tacca scura per ogni sosta ai box.' });
+  const stint = scheda({ titolo: 'Stint e pit stop', nota: 'Una riga per pilota in ordine d’arrivo: segmenti numerati per gli stint, tacca scura per ogni sosta ai box. Uno stint troppo breve per contenere il numero resta senza: la numerazione prosegue dal successivo.' });
   const graficoStint = areaGrafico('grafico-stint');
   const notaStint = el('p', { class: 'px-4 pt-1 pb-4 text-xs text-slate-600', testid: 'nota-mescole' }, NOTA_MESCOLE);
   const tabellaSoste = el('div', {});
@@ -85,7 +80,7 @@ export function monta(radice, ctx) {
     riempi(piloti.corpo, messaggio(testo));
     riempi(legendaTempi);
     riempi(legendaPosizioni);
-    riempi(noteTempi);
+    riempi(areaNote);
     riempi(tabellaSoste);
     for (const g of [graficoTempi, graficoPosizioni, graficoStint]) smontaGrafico(g.area, testo);
   }
@@ -225,8 +220,8 @@ export function monta(radice, ctx) {
   function disegnaGraficoTempi() {
     if (!dati) return;
     const scelti = selezione();
-    const serie = serieTempi(dati.giri, { selezionati: scelti, scalaCompleta: stato.scalaCompleta, soste: dati.soste ?? [] });
-    riempi(noteTempi);
+    const serie = serieTempi(dati.giri, { selezionati: scelti, scalaCompleta: stato.scalaCompletaAnalisi, soste: dati.soste ?? [] });
+    riempi(areaNote);
     if (serie.puntiDisegnati === 0) {
       riempi(legendaTempi);
       const testo = scelti.length ? 'Nessun giro cronometrato per i piloti scelti.' : 'Seleziona almeno un pilota per vedere i tempi sul giro.';
@@ -235,24 +230,7 @@ export function monta(radice, ctx) {
     const fasce = giriLenti(dati.giri);
     riempi(legendaTempi, legendaSerie(serie.serie));
     montaGrafico(graficoTempi.area, (larghezza) => disegnaTempi(serie, { larghezza, fasce }));
-    if (serie.fuoriScala > 0) {
-      noteTempi.append(
-        el(
-          'p',
-          { testid: 'nota-fuori-scala' },
-          `${serie.fuoriScala} ${serie.fuoriScala === 1 ? 'giro è' : 'giri sono'} oltre la scala (più di ${formato.tempo(serie.soglia)}): di solito il primo giro, i giri di ingresso e uscita dai box e le neutralizzazioni. Sono segnati con un triangolo sopra il grafico, nella riga del pilota; il tempo esatto è nel suggerimento, oppure attiva "Scala completa".`,
-        ),
-      );
-    }
-    if (fasce.length) {
-      noteTempi.append(
-        el(
-          'p',
-          {},
-          `Fasce grigie: giri lenti per tutto il gruppo (${fasce.length === 1 && fasce[0].da === fasce[0].a ? 'giro' : 'giri'} ${elencoGiri(fasce)}). È una stima ricavata dai tempi: la fonte non registra safety car, bandiere o pioggia.`,
-        ),
-      );
-    }
+    riempi(areaNote, noteTempi(serie, fasce));
   }
 
   function disegnaGraficoPosizioni() {
@@ -292,6 +270,7 @@ export function monta(radice, ctx) {
       righe.length
         ? tabella({
             didascalia: 'Soste ai box dei piloti in evidenza',
+            minimo: 'min-w-[30rem]',
             righe,
             colonne: [
               { titolo: 'Pilota', cella: (s) => s.driver.name },

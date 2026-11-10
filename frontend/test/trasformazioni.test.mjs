@@ -6,6 +6,7 @@ import {
   distaccoCumulato,
   giriLenti,
   giroMassimo,
+  numeroStintVisibile,
   quantile,
   selezionePredefinita,
   seriePosizioni,
@@ -99,6 +100,9 @@ test('seriePosizioni: il giro 0 è la casella di partenza, quando è nota', () =
   ];
   const r = seriePosizioni(dati, risultati);
   assert.deepEqual(r.serie.map((s) => s.sigla), ['VER', 'PER']);
+  assert.deepEqual(r.serie.map((s) => s.classificato), [true, true], 'senza position nei risultati non si presume un ritiro');
+  const conRitiro = seriePosizioni(dati, [{ driver: VER, grid: 2, position: 1 }, { driver: PER, grid: null, position: null }]);
+  assert.deepEqual(conRitiro.serie.map((s) => s.classificato), [true, false]);
   assert.deepEqual(r.serie[0].punti, [{ giro: 0, posizione: 2 }, { giro: 1, posizione: 1 }, { giro: 2, posizione: 1 }]);
   assert.deepEqual(r.serie[1].punti, [{ giro: 1, posizione: 3 }]);
   assert.equal(r.puntiDisegnati, 4);
@@ -113,15 +117,51 @@ test('seriePosizioni senza giri: nessun punto', () => {
 test('distaccoCumulato: positivo quando A è davanti, si ferma al primo giro mancante', () => {
   const a = giri([90000, 91000, 90000, 90000]);
   const b = giri([91000, 90500, 95000]);
-  assert.deepEqual(distaccoCumulato(a, b), [
-    { giro: 1, ms: 1000 },
-    { giro: 2, ms: 500 },
-    { giro: 3, ms: 5500 },
-  ]);
-  assert.deepEqual(distaccoCumulato(b, a).map((p) => p.ms), [-1000, -500, -5500]);
-  assert.deepEqual(distaccoCumulato(a, []), []);
+  assert.deepEqual(distaccoCumulato(a, b), {
+    punti: [
+      { giro: 1, ms: 1000 },
+      { giro: 2, ms: 500 },
+      { giro: 3, ms: 5500 },
+    ],
+    doppiaggio: null,
+  });
+  assert.deepEqual(distaccoCumulato(b, a).punti.map((p) => p.ms), [-1000, -500, -5500]);
+  assert.deepEqual(distaccoCumulato(a, []), { punti: [], doppiaggio: null });
   // un buco nei giri di uno dei due interrompe il confronto: i tempi cumulati non sarebbero più confrontabili
-  assert.equal(distaccoCumulato(a, [{ lap: 1, timeMs: 90000 }, { lap: 3, timeMs: 90000 }]).length, 1);
+  assert.equal(distaccoCumulato(a, [{ lap: 1, timeMs: 90000 }, { lap: 3, timeMs: 90000 }]).punti.length, 1);
+});
+
+test('distaccoCumulato: la serie si ferma quando uno dei due viene doppiato', () => {
+  // A gira in 60 s, B in 80 s: B perde 20 s al giro. A completa il giro 5 (300 s) prima che B completi il 4 (320 s).
+  const veloce = giri(Array(10).fill(60000));
+  const lento = giri(Array(10).fill(80000));
+  const r = distaccoCumulato(veloce, lento);
+  assert.deepEqual(r.doppiaggio, { giro: 5, doppiato: 'b' });
+  assert.deepEqual(r.punti.map((p) => [p.giro, p.ms]), [[1, 20000], [2, 40000], [3, 60000], [4, 80000]]);
+  assert.ok(r.punti.every((p) => p.ms < 80000 + 1), 'nessun punto supera un giro di distacco');
+  // a parti invertite il doppiato è A e i distacchi cambiano segno
+  const inverso = distaccoCumulato(lento, veloce);
+  assert.deepEqual(inverso.doppiaggio, { giro: 5, doppiato: 'a' });
+  assert.deepEqual(inverso.punti.map((p) => p.ms), [-20000, -40000, -60000, -80000]);
+});
+
+test('distaccoCumulato: un distacco grande ma inferiore a un giro non è un doppiaggio', () => {
+  // B perde 50 s in una sosta al giro 2 e poi gira come A: resta nello stesso giro fino alla fine.
+  const a = giri(Array(8).fill(90000));
+  const b = giri([90000, 140000, 90000, 90000, 90000, 90000, 90000, 90000]);
+  const r = distaccoCumulato(a, b);
+  assert.equal(r.doppiaggio, null);
+  assert.equal(r.punti.length, 8);
+  assert.equal(r.punti.at(-1).ms, 50000);
+});
+
+test('numeroStintVisibile: il numero si scrive solo se il segmento è abbastanza largo', () => {
+  assert.equal(numeroStintVisibile(1, 15), true, 'un giro a schermo largo');
+  assert.equal(numeroStintVisibile(1, 4), false, 'un giro su telefono');
+  assert.equal(numeroStintVisibile(3, 4), true);
+  assert.equal(numeroStintVisibile(2, 4.5), true);
+  assert.equal(numeroStintVisibile(0, 20), false);
+  assert.equal(numeroStintVisibile(5, NaN), false);
 });
 
 test('giriLenti: intervalli di giri lenti per tutto il gruppo, escluso il primo', () => {
@@ -186,6 +226,18 @@ test('confronto: valori e quote per la larghezza delle barre', () => {
   assert.deepEqual([righe[1].a, righe[1].b, righe[1].quotaA, righe[1].quotaB], [0, 0, null, null], 'zero a zero: nessuna barra');
   assert.deepEqual([righe[2].a, righe[2].b], [575, 285]);
   assert.deepEqual([righe[3].a, righe[3].b, righe[3].quotaA], [null, 4.5, null], 'valore mancante: nessuna barra');
+});
+
+test('confronto con valori presi da oggetti diversi: i punti vengono dalla classifica, non da una somma', () => {
+  const metriche = [
+    { chiave: 'punti', etichetta: 'Punti', valore: (x) => x?.classifica?.points ?? null },
+    { chiave: 'wins', etichetta: 'Vittorie', valore: (x) => x?.statistiche.wins },
+  ];
+  const a = { statistiche: { wins: 19, points: 530, sprintPoints: 45 }, classifica: { points: 575 } };
+  const senzaClassifica = { statistiche: { wins: 2, points: 260, sprintPoints: 25 }, classifica: undefined };
+  const righe = confronto(a, senzaClassifica, metriche);
+  assert.deepEqual([righe[0].a, righe[0].b, righe[0].quotaA], [575, null, null], 'senza riga di classifica il valore manca: non si ricostruisce');
+  assert.deepEqual([righe[1].a, righe[1].b], [19, 2]);
 });
 
 test('selezione dei piloti: predefinita, aggiunta, rimozione e limite', () => {

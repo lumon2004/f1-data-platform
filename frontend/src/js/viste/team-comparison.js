@@ -6,15 +6,10 @@ import { el, riempi } from '../dom.js';
 import * as formato from '../format.js';
 import { creaTurni, scegliValido, stato } from '../stato.js';
 import { confronto } from '../trasformazioni.js';
-import { vociStatistiche } from './driver-comparison.js';
+import { METRICHE, notaStatistiche, vociStatistiche } from './driver-comparison.js';
 
-const METRICHE = [
-  { chiave: 'punti', etichetta: 'Punti (gare + sprint)', valore: (s) => (s ? s.points + s.sprintPoints : null) },
-  { chiave: 'wins', etichetta: 'Vittorie' },
-  { chiave: 'podiums', etichetta: 'Piazzamenti a podio' },
-  { chiave: 'poles', etichetta: 'Pole position' },
-  { chiave: 'fastestLaps', etichetta: 'Giri veloci' },
-];
+// I punti di campionato sono il campo `points` della classifica dell'API (gare + sprint): nessuna somma nel browser.
+const METRICHE_SCUDERIA = METRICHE.map((m) => (m.chiave === 'podiums' ? { ...m, etichetta: 'Piazzamenti a podio' } : m));
 
 export function monta(radice, ctx) {
   const turniStagione = creaTurni();
@@ -100,7 +95,14 @@ export function monta(radice, ctx) {
       mostraScheda('b', b);
       riempi(
         barre.corpo,
-        barreConfronto(confronto(a, b, METRICHE), { nomeA: a.team.name, nomeB: b.team.name, formati: { punti: formato.punti } }),
+        barreConfronto(
+          confronto(
+            { statistiche: a, classifica: classifica.find((r) => r.team.id === a.team.id) },
+            { statistiche: b, classifica: classifica.find((r) => r.team.id === b.team.id) },
+            METRICHE_SCUDERIA,
+          ),
+          { nomeA: a.team.name, nomeB: b.team.name, formati: { punti: formato.punti } },
+        ),
         stato.scuderiaA === stato.scuderiaB ? el('p', { class: 'px-4 pb-4 text-xs text-slate-600' }, 'Hai scelto la stessa scuderia per A e B.') : null,
       );
     } catch (errore) {
@@ -131,13 +133,14 @@ export function monta(radice, ctx) {
       el(
         'div',
         { class: 'space-y-4 px-4 py-4' },
-        grigliaStatistiche(vociStatistiche(s)),
+        grigliaStatistiche(vociStatistiche(s, 'scuderia')),
         el(
           'div',
           {},
           el('p', { class: 'etichetta' }, 'Piloti nella stagione'),
           el('p', { class: 'text-sm' }, suoi.length ? suoi.map((p) => p.name).join(', ') : formato.VUOTO),
         ),
+        el('p', { class: 'text-xs text-slate-600' }, notaStatistiche('scuderia')),
       ),
     );
   }

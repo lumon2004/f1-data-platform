@@ -71,27 +71,45 @@ export function messaggio(testo, attributi = {}) {
 export const caricamento = () => messaggio('Caricamento…');
 
 /**
- * Tabella con intestazioni vere. `colonne`: `[{ titolo, num, classe, cella(riga, indice) }]`;
- * `cella` restituisce testo o nodi.
+ * Tabella con intestazioni vere. `colonne`: `[{ titolo, num, classe, soloLargo, cella(riga, indice) }]`;
+ * `cella` restituisce testo o nodi. Le colonne `soloLargo` compaiono da 640 px in su (il loro contenuto
+ * su schermo stretto va riportato in un'altra cella). `minimo` è una classe di larghezza minima: sotto
+ * quella larghezza la tabella scorre in orizzontale dentro la propria scheda, e un avviso lo dice.
  */
-export function tabella({ colonne, righe, testid, testidRiga, didascalia }) {
-  return el(
+export function tabella({ colonne, righe, testid, testidRiga, didascalia, minimo = '' }) {
+  const classi = (c, extra = '') => [c.num ? 'num' : '', c.soloLargo ? 'hidden sm:table-cell' : '', extra].join(' ').trim() || undefined;
+  const avviso = el('p', { class: 'border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-xs font-medium text-slate-700', hidden: true }, 'Scorri la tabella in orizzontale per vedere tutte le colonne →');
+  const area = el(
     'div',
-    { class: 'overflow-x-auto', testid },
+    { class: 'overflow-x-auto' },
     el(
       'table',
-      { class: 'tabella' },
+      { class: `tabella ${minimo}`.trim() },
       didascalia ? el('caption', { class: 'sr-only' }, didascalia) : null,
-      el('thead', {}, el('tr', {}, colonne.map((c) => el('th', { scope: 'col', class: c.num ? 'num' : undefined }, c.titolo)))),
+      el('thead', {}, el('tr', {}, colonne.map((c) => el('th', { scope: 'col', class: classi(c) }, c.titolo)))),
       el(
         'tbody',
         {},
-        righe.map((riga, i) =>
-          el('tr', { testid: testidRiga }, colonne.map((c) => el('td', { class: [c.num ? 'num' : '', c.classe ?? ''].join(' ').trim() || undefined }, c.cella(riga, i)))),
-        ),
+        righe.map((riga, i) => el('tr', { testid: testidRiga }, colonne.map((c) => el('td', { class: classi(c, c.classe ?? '') }, c.cella(riga, i))))),
       ),
     ),
   );
+  if (typeof ResizeObserver === 'function') {
+    // L'avviso compare solo quando la tabella è davvero più larga dello spazio; allora l'area diventa
+    // raggiungibile da tastiera, così si può scorrere anche senza puntatore.
+    new ResizeObserver(() => {
+      const scorre = area.scrollWidth > area.clientWidth + 1;
+      if (avviso.hidden !== !scorre) avviso.hidden = !scorre;
+      if (scorre) {
+        area.setAttribute('tabindex', '0');
+        area.setAttribute('role', 'region');
+        area.setAttribute('aria-label', `${didascalia ?? 'Tabella'} (scorre in orizzontale)`);
+      } else {
+        for (const attributo of ['tabindex', 'role', 'aria-label']) area.removeAttribute(attributo);
+      }
+    }).observe(area);
+  }
+  return el('div', { class: 'min-w-0', testid }, avviso, area);
 }
 
 /** Due righe in una cella: valore principale e dettaglio secondario. */
@@ -167,6 +185,42 @@ export function legendaSerie(serie) {
     { class: 'flex flex-wrap gap-x-5 gap-y-1 px-4 pt-3 text-xs text-slate-700', 'aria-label': 'Legenda' },
     serie.map((s, i) => el('li', { class: 'flex items-center gap-2' }, campioneSerie(s.indice ?? i), el('span', {}, el('span', { class: 'font-semibold' }, s.sigla), ` ${s.nome}`, s.scuderia ? ` (${s.scuderia})` : ''))),
   );
+}
+
+/**
+ * Note sotto un grafico dei tempi sul giro: quanti giri sono fuori scala (e come leggerli) e che cosa sono
+ * le fasce grigie. `dati` viene da serieTempi(), `fasce` da giriLenti(). Restituisce i paragrafi.
+ */
+export function noteTempi(dati, fasce = []) {
+  const note = [];
+  if (dati.fuoriScala > 0) {
+    note.push(
+      el(
+        'p',
+        { testid: 'nota-fuori-scala' },
+        `${dati.fuoriScala} ${dati.fuoriScala === 1 ? 'giro è' : 'giri sono'} oltre la scala (più di ${formato.tempo(dati.soglia)}): di solito il primo giro, i giri di ingresso e uscita dai box e le neutralizzazioni. Sono segnati con un triangolo sopra il grafico, nella riga del pilota; per leggerli in scala attiva "Scala completa".`,
+      ),
+    );
+  }
+  if (fasce.length) {
+    const elenco = fasce.map((f) => (f.da === f.a ? `${f.da}` : `${f.da}–${f.a}`)).join(', ');
+    note.push(
+      el(
+        'p',
+        {},
+        `Fasce grigie: giri lenti per tutto il gruppo (${fasce.length === 1 && fasce[0].da === fasce[0].a ? 'giro' : 'giri'} ${elenco}). È una stima ricavata dai tempi di tutti i piloti: la fonte non registra safety car, bandiere o pioggia.`,
+      ),
+    );
+  }
+  return note;
+}
+
+/** Interruttore "Scala completa" di un grafico dei tempi. */
+export function interruttoreScala(attivo, alCambio) {
+  const casella = el('input', { type: 'checkbox', class: 'h-4 w-4 accent-sky-700' });
+  casella.checked = attivo;
+  casella.addEventListener('change', () => alCambio(casella.checked));
+  return el('label', { class: 'flex items-center gap-2 text-sm' }, casella, 'Scala completa');
 }
 
 /**

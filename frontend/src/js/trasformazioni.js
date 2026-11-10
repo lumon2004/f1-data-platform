@@ -1,6 +1,13 @@
-// Trasformazioni dei dati dell'API nelle strutture disegnate dai grafici.
-// Funzioni pure: nessun DOM e nessuna dipendenza dalla libreria dei grafici.
-// Qui non si ricalcolano classifiche o statistiche (le calcola l'API): si preparano solo le serie.
+// Dai dati dell'API alle strutture disegnate dai grafici. Funzioni pure: nessun DOM e nessuna dipendenza
+// dalla libreria dei grafici.
+//
+// Classifiche, punti, medie e conteggi arrivano già calcolati dall'API e qui non si toccano.
+// Questo file però non si limita a riordinare: contiene tre calcoli fatti nel browser, sui giri già scaricati.
+//   - sogliaFuoriScala: quartili dei tempi mostrati, per decidere dove tagliare l'asse (presentazione);
+//   - giriLenti: mediana dei tempi di tutti i piloti giro per giro, per le fasce grigie (stima di presentazione,
+//     dichiarata come tale a schermo);
+//   - distaccoCumulato: differenza dei tempi cumulati di due piloti. È una statistica comparativa vera e propria:
+//     sta qui perché l'API non la espone (eccezione motivata in docs/decisioni.md).
 
 import { sigla } from './format.js';
 
@@ -150,6 +157,8 @@ export function serieTempi(pilotiGiri, { selezionati, scalaCompleta = false, sos
  */
 export function seriePosizioni(pilotiGiri, risultati = []) {
   const griglia = new Map(risultati.map((r) => [r.driver.id, r.grid]));
+  // Non classificato = position null nei risultati; senza risultati si assume classificato.
+  const nonClassificati = new Set(risultati.filter((r) => r.position === null).map((r) => r.driver.id));
   let punti = 0;
   let posizioneMassima = 0;
   let ultimoGiro = 0;
@@ -163,28 +172,56 @@ export function seriePosizioni(pilotiGiri, risultati = []) {
       if (x.giro > ultimoGiro) ultimoGiro = x.giro;
     }
     punti += lista.length;
-    return { id: p.driver.id, sigla: sigla(p.driver), nome: p.driver.name, scuderia: p.team?.name ?? '', punti: lista };
+    return {
+      id: p.driver.id,
+      sigla: sigla(p.driver),
+      nome: p.driver.name,
+      scuderia: p.team?.name ?? '',
+      classificato: !nonClassificati.has(p.driver.id),
+      punti: lista,
+    };
   }).filter((s) => s.punti.length > 0);
   return { serie, puntiDisegnati: punti, posizioneMassima, giroMassimo: ultimoGiro };
 }
 
 /**
- * Distacco in pista tra due piloti alla fine di ogni giro: differenza dei tempi cumulati (B − A),
- * quindi positivo quando A è davanti. Si ferma al primo giro che manca a uno dei due.
+ * Distacco sul tempo di gara tra due piloti, a parità di giri completati: alla fine di ogni giro, differenza
+ * dei tempi cumulati dal via (B − A), quindi positiva quando A è davanti. Finché i due sono nello stesso giro
+ * coincide con il distacco in pista.
+ *
+ * La serie si ferma:
+ *   - al primo giro che manca a uno dei due (ritiro, o un buco nei dati: oltre, i cumulati non sono confrontabili);
+ *   - quando uno dei due viene doppiato, cioè quando chi è davanti completa il giro g prima che l'altro abbia
+ *     completato il giro g − 1. Da lì la differenza a parità di giri non descrive più la distanza in pista.
+ *     In quel caso `doppiaggio` vale `{ giro: g, doppiato: 'a' | 'b' }` e l'ultimo punto è quello del giro g − 1.
  */
 export function distaccoCumulato(giriA, giriB) {
   const perGiro = (giri) => new Map(giri.filter((g) => numero(g.timeMs)).map((g) => [g.lap, g.timeMs]));
   const a = perGiro(giriA);
   const b = perGiro(giriB);
   const punti = [];
+  let doppiaggio = null;
   let cumA = 0;
   let cumB = 0;
   for (let giro = 1; a.has(giro) && b.has(giro); giro += 1) {
+    const precedenteA = cumA;
+    const precedenteB = cumB;
     cumA += a.get(giro);
     cumB += b.get(giro);
+    if (giro > 1 && cumA < precedenteB) doppiaggio = { giro, doppiato: 'b' };
+    else if (giro > 1 && cumB < precedenteA) doppiaggio = { giro, doppiato: 'a' };
+    if (doppiaggio) break;
     punti.push({ giro, ms: cumB - cumA });
   }
-  return punti;
+  return { punti, doppiaggio };
+}
+
+/**
+ * Il numero di uno stint si scrive dentro il segmento solo se ci sta: servono almeno `minimoPx` pixel.
+ * `pxPerGiro` è la larghezza di un giro nel grafico disegnato.
+ */
+export function numeroStintVisibile(giri, pxPerGiro, minimoPx = 9) {
+  return numero(giri) && numero(pxPerGiro) && giri * pxPerGiro >= minimoPx;
 }
 
 /**
