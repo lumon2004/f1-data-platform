@@ -1,0 +1,16 @@
+# Credenziali
+.env
+.env.*
+!.env.example
+
+# Dati completi e intermedi (si versiona solo data-pipeline/sample/)
+data-pipeline/raw/
+data-pipeline/processed/
+
+# Log
+logs/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
