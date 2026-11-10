@@ -3,45 +3,71 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Dashboard analitica non ufficiale sui dati storici del campionato: stagioni, gare, piloti e scuderie." />
     <title>F1 Data Platform</title>
     <!-- Icona vuota: evita la richiesta di /favicon.ico e il relativo errore in console. -->
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body class="flex min-h-screen flex-col bg-slate-50 text-slate-900 antialiased">
+  <body class="flex min-h-screen flex-col bg-slate-50 font-sans text-slate-900 antialiased">
     <header class="border-b border-slate-200 bg-white">
-      <div class="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <p class="text-lg font-semibold tracking-tight">F1 Data Platform</p>
+      <div class="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <p class="text-base font-semibold tracking-tight">
+          F1 Data Platform
+          <span class="ml-2 text-xs font-normal text-slate-600">dati storici, progetto non ufficiale</span>
+        </p>
         <nav aria-label="Viste della dashboard">
           <ul class="flex flex-wrap gap-1 text-sm">
-            <li><a class="nav-link rounded px-3 py-2 hover:bg-slate-100" href="#season-overview" data-view="season-overview" data-testid="nav-season-overview">Season overview</a></li>
-            <li><a class="nav-link rounded px-3 py-2 hover:bg-slate-100" href="#race-explorer" data-view="race-explorer" data-testid="nav-race-explorer">Race explorer</a></li>
-            <li><a class="nav-link rounded px-3 py-2 hover:bg-slate-100" href="#driver-comparison" data-view="driver-comparison" data-testid="nav-driver-comparison">Driver comparison</a></li>
-            <li><a class="nav-link rounded px-3 py-2 hover:bg-slate-100" href="#team-comparison" data-view="team-comparison" data-testid="nav-team-comparison">Team comparison</a></li>
-            <li><a class="nav-link rounded px-3 py-2 hover:bg-slate-100" href="#race-analysis" data-view="race-analysis" data-testid="nav-race-analysis">Race analysis</a></li>
+            <li><a class="nav-link block rounded-md px-3 py-1.5 hover:bg-slate-100" href="#season-overview" data-view="season-overview" data-testid="nav-season-overview">Season overview</a></li>
+            <li><a class="nav-link block rounded-md px-3 py-1.5 hover:bg-slate-100" href="#race-explorer" data-view="race-explorer" data-testid="nav-race-explorer">Race explorer</a></li>
+            <li><a class="nav-link block rounded-md px-3 py-1.5 hover:bg-slate-100" href="#driver-comparison" data-view="driver-comparison" data-testid="nav-driver-comparison">Driver comparison</a></li>
+            <li><a class="nav-link block rounded-md px-3 py-1.5 hover:bg-slate-100" href="#team-comparison" data-view="team-comparison" data-testid="nav-team-comparison">Team comparison</a></li>
+            <li><a class="nav-link block rounded-md px-3 py-1.5 hover:bg-slate-100" href="#race-analysis" data-view="race-analysis" data-testid="nav-race-analysis">Race analysis</a></li>
           </ul>
         </nav>
       </div>
     </header>
 
-    <main id="vista" class="mx-auto w-full max-w-6xl flex-1 px-4 py-8" aria-live="polite">
-      <h1 class="text-2xl font-semibold">Season overview</h1>
-      <p class="mt-2 text-slate-600">Vista in preparazione.</p>
-    </main>
+    <div class="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
+      <div
+        id="errore-api"
+        data-testid="errore-api"
+        role="alert"
+        hidden
+        class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700"
+      >
+        <div>
+          <p class="font-semibold">Dati non disponibili</p>
+          <p id="errore-api-testo"></p>
+        </div>
+        <button id="errore-api-riprova" type="button" class="rounded-md border border-red-300 bg-white px-3 py-1.5 font-medium text-red-700 hover:bg-red-100">
+          Riprova
+        </button>
+      </div>
+
+      <main id="vista" class="space-y-5">
+        <p class="text-sm text-slate-600">Caricamento…</p>
+        <noscript><p class="text-sm text-slate-600">La dashboard richiede JavaScript.</p></noscript>
+      </main>
+    </div>
 
     <footer class="border-t border-slate-200 bg-white" data-testid="footer">
-      <div class="mx-auto max-w-6xl space-y-1 px-4 py-4 text-xs text-slate-600">
+      <div class="mx-auto max-w-7xl space-y-1 px-4 py-4 text-xs text-slate-600">
         <p>
-          Fonte dati: dataset Kaggle "Formula 1 World Championship (1950 - 2024)" di Rohan Rao (Vopani),
-          derivato dai dati Ergast Developer API.
+          Dati: dataset Kaggle
+          <a class="text-accento underline" href="https://www.kaggle.com/datasets/rohanrao/formula-1-world-championship-1950-2020" rel="noopener noreferrer">"Formula 1 World Championship (1950 - 2024)"</a>
+          di Rohan Rao, compilato dalla Ergast Developer API.
         </p>
         <p>
-          Progetto non ufficiale, a scopo dimostrativo: non è affiliato, sponsorizzato o approvato da
-          Formula 1, FIA o dalle scuderie. Nomi di piloti e scuderie compaiono solo come dati testuali.
+          Progetto non ufficiale, non affiliato a Formula 1, FIA o scuderie. I nomi di scuderie e piloti compaiono solo
+          come dati testuali; il progetto non usa loghi né fotografie ufficiali.
         </p>
       </div>
     </footer>
 
+    <!-- Libreria dei grafici (Observable Plot + D3), copiata in dist/vendor/ dalla build: nessuna CDN. -->
+    <script src="vendor/d3.min.js" defer></script>
+    <script src="vendor/plot.umd.min.js" defer></script>
     <script type="module" src="js/main.js"></script>
   </body>
 </html>

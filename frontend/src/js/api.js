@@ -40,9 +40,9 @@ export async function getJson(path, { params, signal, fetchImpl = globalThis.fet
     let message = `Errore ${response.status} dall'API.`;
     try {
       const body = await response.json();
-      if (body?.message) message = body.message;
+      if (typeof body?.message === 'string' && body.message.trim()) message = body.message;
     } catch {
-      // corpo non JSON (es. 502 del proxy): resta il messaggio generico
+      // corpo non JSON (es. errore di un proxy intermedio): resta il messaggio generico
     }
     throw new ApiError(message, { status: response.status, path: url });
   }
@@ -53,17 +53,63 @@ export async function getJson(path, { params, signal, fetchImpl = globalThis.fet
   }
 }
 
+/**
+ * Messaggio per l'utente a partire da un errore qualsiasi. È testo semplice: chi lo mostra
+ * lo inserisce con textContent, mai come HTML.
+ */
+export function messaggioErrore(errore) {
+  if (!(errore instanceof ApiError)) return 'Si è verificato un errore imprevisto nella dashboard.';
+  if (errore.status === 0) {
+    return "L'API non risponde. Controlla che il backend sia avviato e raggiungibile, poi riprova.";
+  }
+  if (errore.status === 502 || errore.status === 503 || errore.status === 504) {
+    return `L'API non è disponibile in questo momento (errore ${errore.status}). ${errore.message}`;
+  }
+  if (errore.status === 404) return `Dato non trovato. ${errore.message}`;
+  if (errore.status === 400) return `Richiesta non valida. ${errore.message}`;
+  return `L'API ha risposto con un errore (${errore.status}). ${errore.message}`;
+}
+
 const seg = (value) => encodeURIComponent(String(value));
 
-// Endpoint minimi del contratto dell'API.
-export const api = {
-  seasons: (opts) => getJson('/seasons', opts),
-  races: (year, opts) => getJson(`/seasons/${seg(year)}/races`, opts),
-  race: (raceId, opts) => getJson(`/races/${seg(raceId)}`, opts),
-  raceResults: (raceId, opts) => getJson(`/races/${seg(raceId)}/results`, opts),
-  laps: (raceId, driverId, opts) => getJson(`/races/${seg(raceId)}/laps/${seg(driverId)}`, opts),
-  driverStatistics: (driverId, season, opts) =>
-    getJson(`/drivers/${seg(driverId)}/statistics`, { ...opts, params: { season } }),
-  teamStatistics: (teamId, season, opts) =>
-    getJson(`/teams/${seg(teamId)}/statistics`, { ...opts, params: { season } }),
-};
+/**
+ * Crea un client dell'API. Con `cache: true` ogni URL viene richiesto una sola volta
+ * (i dati non cambiano mentre la dashboard è aperta); le risposte fallite non restano in cache.
+ */
+export function creaClient({ fetchImpl, cache = false } = {}) {
+  const memoria = new Map();
+
+  function get(path, params) {
+    const chiave = buildUrl(path, params);
+    if (cache && memoria.has(chiave)) return memoria.get(chiave);
+    const promessa = getJson(path, { params, fetchImpl: fetchImpl ?? globalThis.fetch });
+    if (cache) {
+      memoria.set(chiave, promessa);
+      promessa.catch(() => memoria.delete(chiave));
+    }
+    return promessa;
+  }
+
+  return {
+    seasons: () => get('/seasons'),
+    races: (year) => get(`/seasons/${seg(year)}/races`),
+    seasonDrivers: (year) => get(`/seasons/${seg(year)}/drivers`),
+    seasonTeams: (year) => get(`/seasons/${seg(year)}/teams`),
+    driverStandings: (year) => get(`/seasons/${seg(year)}/standings/drivers`),
+    teamStandings: (year) => get(`/seasons/${seg(year)}/standings/teams`),
+    race: (raceId) => get(`/races/${seg(raceId)}`),
+    /** `session`: 'race' (predefinita) oppure 'sprint'. */
+    raceResults: (raceId, session) => get(`/races/${seg(raceId)}/results`, { session: session === 'race' ? undefined : session }),
+    qualifying: (raceId) => get(`/races/${seg(raceId)}/qualifying`),
+    allLaps: (raceId) => get(`/races/${seg(raceId)}/laps`),
+    laps: (raceId, driverId) => get(`/races/${seg(raceId)}/laps/${seg(driverId)}`),
+    pitStops: (raceId) => get(`/races/${seg(raceId)}/pit-stops`),
+    stints: (raceId) => get(`/races/${seg(raceId)}/stints`),
+    driverStatistics: (driverId, season) => get(`/drivers/${seg(driverId)}/statistics`, { season }),
+    teamStatistics: (teamId, season) => get(`/teams/${seg(teamId)}/statistics`, { season }),
+    svuotaCache: () => memoria.clear(),
+  };
+}
+
+/** Client usato dalla dashboard. */
+export const api = creaClient({ cache: true });

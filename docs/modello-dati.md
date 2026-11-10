@@ -396,7 +396,7 @@ Alternative scartate:
 - **Scartare le due righe.** Si perderebbero due risultati reali e, a cascata, i loro 111 giri: gli unici 113 scarti dell'intero dataset, per un dato che la riga stessa contiene in un'altra colonna.
 - **Allentare il vincolo con una migrazione.** Ammettere `classified` senza posizione indebolirebbe la regola per tutte le 26 759 righe a causa di due, e ogni query che conta vittorie e podi con `position` dovrebbe chiedersi che cosa fare di un classificato senza posizione.
 
-La derivazione non è un annullamento e non è uno scarto: `transform` la registra a parte (file, riga, valore derivato) e ne riporta il conteggio nel riepilogo. Se la colonna `position` è valorizzata ma non valida (non intera o non positiva), il valore originale finisce in `valori_annullati.json` e la posizione si deriva comunque da `positionText`.
+La derivazione non è un annullamento e non è uno scarto: `transform` la registra a parte, nel file `valori_derivati.json` (file, riga, valore derivato), e ne riporta il conteggio nel riepilogo. Se la colonna `position` è valorizzata ma non valida (non intera o non positiva), il valore originale finisce in `valori_annullati.json` e la posizione si deriva comunque da `positionText`.
 
 Quando entrambe sono valorizzate vale la colonna `position`; `positionText` decide solo l'esito. La concordanza tra le due non è tra i controlli eseguiti alla tappa 3.
 
@@ -598,7 +598,7 @@ La scelta resta al backend, che la dichiara nella documentazione OpenAPI. Il tes
 
 Note per il backend:
 
-- `count(DISTINCT race_id)` e non `count(*)`: nelle stagioni storiche un pilota può avere più righe nella stessa gara (91 coppie gara-pilota ripetute in `results.csv`), e una scuderia ne ha sempre più di una.
+- `count(DISTINCT race_id)` e non `count(*)`: nelle stagioni storiche un pilota può avere più righe nella stessa gara (85 coppie gara-pilota ripetute in `results.csv`, per 91 righe in più), e una scuderia ne ha sempre più di una.
 - Le statistiche contano le sole sessioni `race` (Gran Premi), come i valori attesi dei test. Se i punti debbano includere le sprint è una scelta di prodotto del backend: i dati ci sono (`session_type = 'sprint'`).
 - `sum(points)` è la somma dei punti segnati. In alcune stagioni storiche il totale ufficiale di campionato è diverso (regola dei migliori risultati): il modello non contiene le classifiche ufficiali.
 - La sessione `race` esiste per ogni gara per costruzione della pipeline, non per vincolo: chi vuole essere difensivo usa `LEFT JOIN`.
@@ -654,11 +654,11 @@ Tutti gli altri vincoli `CHECK`, `NOT NULL`, `UNIQUE` e le chiavi esterne: 0 vio
 
 **Assunzioni non verificabili (8 e 9).** I CSV non contengono nulla con cui confrontarle; restano assunzioni dichiarate, basate sulla documentazione della fonte. Se la 8 fosse falsa cambierebbero di un giro i confini degli stint e il significato di `pit_stops.time_of_day`; se lo fosse la 9, il nome e il significato di `sessions.start_time_utc`. Nessuna delle due tocca vincoli o chiavi.
 
-**Scarti prima e dopo la regola.** Con la regola precedente ("numerico con `position` assente: scarto") le due righe del 2005 venivano scartate insieme ai loro 111 giri di `lap_times.csv`: 113 scarti, gli unici dell'intero dataset. Con la posizione derivata da `positionText` gli scarti attesi sul dataset completo sono zero; il valore va confermato rieseguendo `transform` dopo la modifica.
+**Scarti prima e dopo la regola.** Con la regola precedente ("numerico con `position` assente: scarto") le due righe del 2005 venivano scartate insieme ai loro 111 giri di `lap_times.csv`: 113 scarti, gli unici dell'intero dataset. Con la posizione derivata da `positionText` gli scarti sul dataset completo sono zero: lo conferma l'esecuzione di `transform` dopo la modifica (0 scarti, 2 posizioni derivate).
 
 **Osservazioni che confermano scelte già prese.**
 
-- (gara, pilota) è ripetuta 91 volte in `results.csv` (vetture condivise): conferma l'assenza di un `UNIQUE` su quella coppia e l'uso di `(session_type, source_id)` come chiave di caricamento.
+- 85 coppie (gara, pilota) sono ripetute in `results.csv`, per 91 righe in più (vetture condivise): conferma l'assenza di un `UNIQUE` su quella coppia e l'uso di `(session_type, source_id)` come chiave di caricamento.
 - 6 risultati non hanno numero di vettura: `results.car_number` resta facoltativa.
 - 404 gare su 494 con qualifiche non hanno `quali_date`: la sessione `qualifying` viene creata senza data, come previsto in [Sessioni](#sessioni).
 - Un pilota con soste registrate e 0 giri completati non ha stint (Hülkenberg, gara 1141): è l'effetto voluto della condizione `laps_completed >= 1`, vedi [Stint e mescole](#stint-e-mescole).

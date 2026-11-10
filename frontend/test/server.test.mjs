@@ -48,6 +48,55 @@ test('inoltra /api al backend conservando percorso e query', async () => {
   assert.deepEqual(await res.json(), { percorso: '/api/drivers/1/statistics?season=2023' });
 });
 
+test('intestazioni di sicurezza sui file statici: nessuna origine esterna ammessa', async () => {
+  const res = await fetch(`${base}/`);
+  const csp = res.headers.get('content-security-policy');
+  assert.match(csp, /default-src 'self'/);
+  assert.match(csp, /script-src 'self'(;|$)/);
+  assert.doesNotMatch(csp, /https?:/);
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+});
+
+test('solo GET e HEAD: gli altri metodi ricevono 405, anche su /api', async () => {
+  assert.equal((await fetch(`${base}/api/seasons`, { method: 'POST', body: '{}' })).status, 405);
+  assert.equal((await fetch(`${base}/`, { method: 'DELETE' })).status, 405);
+  assert.equal((await fetch(`${base}/`, { method: 'HEAD' })).status, 200);
+});
+
+test("inoltra anche le risposte d'errore del backend, con il loro corpo", async () => {
+  const errore = http.createServer((req, res) => {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 404, message: 'Gara 999 inesistente' }));
+  });
+  const server = createServer({ root: tmpdir(), apiTarget: `http://127.0.0.1:${await ascolta(errore)}` });
+  try {
+    const res = await fetch(`http://127.0.0.1:${await ascolta(server)}/api/races/999`);
+    assert.equal(res.status, 404);
+    assert.equal((await res.json()).message, 'Gara 999 inesistente');
+  } finally {
+    server.close();
+    errore.close();
+  }
+});
+
+test('504 JSON se il backend non risponde entro il tempo limite', async () => {
+  const lento = http.createServer(() => {
+    // accetta la richiesta e non risponde mai
+  });
+  const server = createServer({ root: tmpdir(), apiTarget: `http://127.0.0.1:${await ascolta(lento)}`, timeoutProxyMs: 150 });
+  try {
+    const inizio = Date.now();
+    const res = await fetch(`http://127.0.0.1:${await ascolta(server)}/api/seasons`);
+    assert.equal(res.status, 504);
+    assert.equal((await res.json()).status, 504);
+    assert.ok(Date.now() - inizio < 5000, 'il proxy deve rispondere allo scadere del tempo limite');
+  } finally {
+    server.close();
+    lento.closeAllConnections();
+    lento.close();
+  }
+});
+
 test('502 JSON se il backend non è raggiungibile', async () => {
   const chiuso = http.createServer();
   const porta = await ascolta(chiuso);

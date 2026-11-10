@@ -1,0 +1,5 @@
+# Contesto di build = frontend/. Le dipendenze si installano nell'immagine con `npm ci`.
+node_modules
+dist
+Dockerfile
+.dockerignore

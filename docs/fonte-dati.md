@@ -50,6 +50,7 @@ Conseguenza pratica:
 | Dataset completo (CSV scaricati da Kaggle) | `data-pipeline/raw/` | no |
 | File intermedi prodotti dalla pipeline | `data-pipeline/processed/` | no |
 
+- Il campione contiene **11 dei 14 CSV** del dataset, quelli che la pipeline carica; sono esclusi `driver_standings`, `constructor_standings` e `constructor_results`. La stagione 2024 è completa nei dati: 24 gare.
 - Il dataset completo si scarica con `f1-pipeline download --output data-pipeline/raw`. Il token Kaggle si legge dalle variabili d'ambiente (i nomi sono in `.env.example`); non è mai scritto nel codice né nel repository.
 - Il repository ridistribuisce **solo il campione**, e il repository è privato.
 - Il software è proprietario, senza licenza. **La nota di copyright del progetto riguarda il codice, non i dati.**

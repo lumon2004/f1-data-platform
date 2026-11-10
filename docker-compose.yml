@@ -1,7 +1,6 @@
 # F1 Data Platform — orchestrazione locale.
 # Le credenziali arrivano da variabili d'ambiente o da un file .env non versionato (vedi .env.example).
-# `docker compose up` avvia PostgreSQL e il backend, poi carica il dataset di esempio.
-# Il frontend si aggiunge alla tappa 7.
+# `docker compose up` avvia PostgreSQL, il backend e la dashboard, poi carica il dataset di esempio.
 
 services:
   postgres:
@@ -70,6 +69,26 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+  # Dashboard web. Il server Node serve i file statici e fa da proxy di /api verso il backend:
+  # il browser parla solo con questa porta.
+  frontend:
+    build: ./frontend
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      API_TARGET: http://backend:8080
+    ports:
+      - "${WEB_PORT:-8081}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
 volumes:
   postgres-data:
