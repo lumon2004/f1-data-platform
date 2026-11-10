@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 REPO = Path(__file__).resolve().parents[2]
 SAMPLE = REPO / "data-pipeline" / "sample"
@@ -31,8 +33,15 @@ def leggi_csv(nome, cartella=SAMPLE):
 
 # ---------- API ----------
 
+# Una sola sessione HTTP per tutti i test: riusa la connessione (invece di aprirne una nuova
+# per ognuna delle circa 1 400 richieste del test di coerenza) e ritenta gli errori di rete,
+# che non dicono nulla sul comportamento dell'API. Gli stati HTTP non vengono mai ritentati.
+SESSIONE = requests.Session()
+SESSIONE.mount("http://", HTTPAdapter(max_retries=Retry(total=3, connect=3, read=3, status=0, backoff_factor=0.2)))
+
+
 def api_get(percorso, **kwargs):
-    return requests.get(API_URL + percorso, timeout=30, **kwargs)
+    return SESSIONE.get(API_URL + percorso, timeout=(5, 30), **kwargs)
 
 
 def api_json(percorso):

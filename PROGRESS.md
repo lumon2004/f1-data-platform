@@ -39,6 +39,8 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 
 ## Da segnalare all'utente (file bloccati)
 
+- **Risolto il 2026-11-10 con l'approvazione dell'utente**: il test di coerenza con i CSV falliva circa 1 volta su 3 (una connessione appesa nella rete di Docker Desktop tra le circa 1 430 aperte dal test). L'utente ha applicato una patch al file di configurazione condivisa dei test di accettazione: una sola sessione HTTP che riusa la connessione e ritenta solo gli errori di rete, mai gli stati HTTP. Dopo la patch: 6 esecuzioni complete su 6 verdi.
+
 - `tests/accettazione/README.md` dice "un file `<tabella>.parquet` per tabella", ma i Parquet sono 13 per 12 tabelle (`sprint_results.parquet` separato) perché `test_validazione_scarta_e_registra` confronta `results.parquet` con `results.csv`.
 - La regex di `test_nessuna_credenziale_nel_codice` ha dato falsi positivi su codice innocuo (`mvnw`, una costante con il nome della variabile del token): aggirati rinominando.
 - L'hook blocca alcuni comandi di sola lettura (es. `docker run --rm` insieme a un percorso dei test bloccati).
@@ -51,3 +53,4 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 - 2026-11-10 — Tappa 3 chiusa: dataset scaricato dall'utente con il token Kaggle; pipeline completa, campione 2022–2024, `docs/fonte-dati.md` (licenza CC0 verificata su Kaggle; termini originali di Ergast non più consultabili). Assunzioni dello schema verificate sui dati reali; due posizioni mancanti del 2005 derivate da `positionText`. Revisione del `reviewer`: via libera.
 - 2026-11-10 — Tappa 4 chiusa: API REST con i sette endpoint, 91 test, Dockerfile del backend, Compose con backend e caricamento del campione. Revisione del `reviewer`: via libera; 160 statistiche ricalcolate dai CSV senza differenze.
 - 2026-11-10 — Tappe 4–8 chiuse: API (15 endpoint), dashboard con grafici, Compose completo, documentazione. Revisioni del `reviewer` con via libera; giro di rifinitura della dashboard. `./verifica.sh` passa: 38 su 38.
+- 2026-11-10 — Verifica finale del `reviewer`: prodotto conforme ai criteri, ma verifica instabile (2 fallimenti su 3 per la rete di Docker). Patch ai test approvata e applicata dall'utente; 6 esecuzioni su 6 verdi.
