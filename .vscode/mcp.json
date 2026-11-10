@@ -1,0 +1,21 @@
+{
+  "servers": {
+    "f1-postgres": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "${input:postgres-connection-string}"
+      ]
+    }
+  },
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "postgres-connection-string",
+      "description": "PostgreSQL URI for the local F1 database",
+      "password": true
+    }
+  ]
+}

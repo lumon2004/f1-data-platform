@@ -12,5 +12,6 @@
             "name": "F1 Data Platform"
         }
     ],
-    "java.configuration.updateBuildConfiguration": "automatic"
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "python.terminal.useEnvFile": true
 }
