@@ -4,8 +4,8 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 
 ## Stato attuale
 
-- **Tappa corrente**: 5 — Dashboard (responsabile: `sviluppatore-frontend`)
-- **Bloccanti**: nessuno.
+- **Tappa corrente**: 9 — verifica finale del `reviewer` in corso; poi approvazione visiva dell'utente sugli screenshot in `review/`.
+- **Bloccanti**: nessuno. `./verifica.sh` passa (38 test di accettazione su 38, 2026-11-10).
 
 ## Tappe
 
@@ -14,27 +14,28 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 2. [x] Modello dati: schema, migrazioni, diagramma ER, `docs/modello-dati.md`
 3. [x] Pipeline dati: ingestione, validazione, normalizzazione, formato intermedio, caricamento, report scarti
 4. [x] API Spring Boot: endpoint, aggregazioni, gestione errori, OpenAPI, test Testcontainers
-5. [ ] Dashboard: struttura, filtri, chiamate API, gestione errori
-6. [ ] Visualizzazioni: tempi sul giro, posizioni, stint e pit stop, confronti
-7. [ ] Docker end-to-end: avvio da clone pulito, healthcheck, servizio di caricamento dati
-8. [ ] Documentazione: README completo, diagramma architettura, esempi API, screenshot
+5. [x] Dashboard: struttura, filtri, chiamate API, gestione errori
+6. [x] Visualizzazioni: tempi sul giro, posizioni, stint e pit stop, confronti
+7. [x] Docker end-to-end: avvio da clone pulito, healthcheck, servizio di caricamento dati
+8. [x] Documentazione: README completo, diagramma architettura, esempi API, screenshot
 9. [ ] Tutti i test di accettazione verdi e screenshot in `review/`
 
 ## Stato dei componenti
 
-- `docker-compose.yml`: `postgres`, `backend` (healthcheck su `/actuator/health`) e `pipeline` come servizio una tantum che carica il campione dopo `backend` healthy. Manca `frontend` (tappa 7). Stack di sviluppo: `POSTGRES_DB=f1 POSTGRES_USER=f1 POSTGRES_PASSWORD=<prova> POSTGRES_PORT=25432 API_PORT=28080 docker compose -p f1-dev up -d --build` (API su http://localhost:28080).
-- `data-pipeline/`: `f1-pipeline` con `download`, `sample`, `transform`, `load`, `run` (modulo `csv` + PyArrow, psycopg 3, versioni fissate). Campione 2022–2024 in `sample/` (11 CSV, 2,5 MB, 0 scarti). Dataset completo in `raw/` (non versionato): 0 scarti, 2 posizioni derivate. Test: nell'immagine `f1-verifica-test`, `pip install ".[test]"`, `pytest` (160 passati, 5 saltati senza `F1_PIPELINE_TEST_DSN`).
-- `database/migrations/`: V1–V4, 12 tabelle. Modello e regole di trasformazione in `docs/modello-dati.md`.
-- `backend/`: i sette endpoint del contratto, errori JSON, OpenAPI, `Dockerfile`. Test: `./mvnw -B -q verify` (91 test, campione caricato dalla pipeline vera). I test di accettazione di API, database e pipeline passano contro lo stack `f1-dev` (21 su 21).
-- `frontend/`: scheletro HTML + moduli ES + Tailwind v4, server Node con proxy `/api`. Test: `npm test`.
+- `docker-compose.yml`: `postgres`, `backend`, `frontend` con healthcheck; `pipeline` una tantum carica il campione dopo `backend` healthy. Avvio: file delle variabili d'ambiente con `POSTGRES_DB/USER/PASSWORD`, poi `docker compose up --build` (API su 8080, dashboard su 8081).
+- `data-pipeline/`: `f1-pipeline` con `download`, `sample`, `transform`, `load`, `run`. Campione 2022–2024 in `sample/`. Test: 160 + 5 su database dedicato (`F1_PIPELINE_TEST_DSN`).
+- `database/migrations/`: V1–V4, 12 tabelle.
+- `backend/`: 15 endpoint (7 del contratto + 8 per la dashboard), errori JSON, OpenAPI. Test: `./mvnw -B -q verify` (176).
+- `frontend/`: cinque viste, grafici con Observable Plot + D3 serviti in locale, scelte nell'URL. Test: `npm test` (72).
+- Documentazione: `README.md`, `docs/architettura.md`, `modello-dati.md`, `fonte-dati.md`, `direzione-ui.md`, `decisioni.md`. Note di revisione in `review/note.md`.
+- Stack di sviluppo eventualmente acceso: progetto Compose `f1-dev` (porte 25432/28080/28081), avviato con variabili inline.
 
-## Note per le tappe successive
+## Possibili passi successivi (fuori da questo step)
 
-- **Tappa 4**: gli `id` di gare, piloti, scuderie e circuiti sono quelli Ergast (Verstappen 830; Bahrain 2023 è la gara 1098). `results` contiene gare e sprint: ogni query filtra `session_type = 'race'` (15 gare con sprint nel campione; servono test su una di queste), e `GET /api/races/{id}/results` restituisce esattamente le righe `race`. Usare `count(DISTINCT race_id)` per le gare. Decidere e dichiarare in OpenAPI se `podiums` di una scuderia conta i piazzamenti (raccomandato da `architetto-dati`: 30 per Red Bull 2023) o le gare con podio (21), e se `races` conta iscrizioni o partenze; le query sono in `docs/modello-dati.md`. Colonne `NULL` da gestire: `position`, `grid_position`, `time_ms`, giro veloce, `drivers.code`. Valori attesi dai test bloccati, confermati sui dati: VER 2023 = 22 gare, 19 vittorie, 21 podi; Red Bull 2023 = 21 vittorie.
-- **Tappa 6**: per stint e pit stop può servire un endpoint in più; stint senza mescola, assenti per le gare senza soste registrate.
-- **Tappa 7**: il servizio `pipeline` deve perdere il profilo, eseguire `run --source sample` dopo `backend` healthy e terminare con 0. Frontend nel container con `HOST=0.0.0.0` e `API_TARGET=http://backend:8080`; healthcheck su `/`; timeout al proxy; `npm test` nella build dell'immagine. Contesto di build del backend = radice del repository. Il `load` non rimuove le righe sparite dall'input (vedi `docs/decisioni.md`): decidere con `architetto-dati` se resta un limite documentato. I 5 test della pipeline su database non girano in `verifica.sh` (file bloccato): trovare dove eseguirli.
-- **Tappa 8**: il Compose richiede `POSTGRES_DB/USER/PASSWORD` senza default: il README spiega il passo `.env`. Piccole imprecisioni da correggere in `docs/modello-dati.md` tramite `architetto-dati`: le coppie gara-pilota ripetute sono 85 (91 sono le righe in più); la frase "va confermato rieseguendo `transform`" è superata (confermato: 0 scarti, 2 derivate); nominare `valori_derivati.json`.
-- `backend/mvnw`: una riga ritoccata, vedi `docs/decisioni.md`; va riapplicata se si rigenera il wrapper.
+- Endpoint per il distacco tra due piloti (oggi calcolato nel browser, eccezione documentata in `docs/decisioni.md`) e per l'andamento dei punti gara per gara.
+- Il `load` non rimuove le righe sparite dall'input (limite dichiarato).
+- I 5 test della pipeline su database non girano in `verifica.sh` (file bloccato).
+- Tema scuro; compressione e cache nel server statico; README in inglese per il portfolio.
 
 ## Da segnalare all'utente (file bloccati)
 
@@ -49,3 +50,4 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 - 2026-11-10 — Tappa 2 chiusa: 4 migrazioni Flyway (12 tabelle), `docs/modello-dati.md`; applicate su PostgreSQL 17 e riviste dal `reviewer` (via libera).
 - 2026-11-10 — Tappa 3 chiusa: dataset scaricato dall'utente con il token Kaggle; pipeline completa, campione 2022–2024, `docs/fonte-dati.md` (licenza CC0 verificata su Kaggle; termini originali di Ergast non più consultabili). Assunzioni dello schema verificate sui dati reali; due posizioni mancanti del 2005 derivate da `positionText`. Revisione del `reviewer`: via libera.
 - 2026-11-10 — Tappa 4 chiusa: API REST con i sette endpoint, 91 test, Dockerfile del backend, Compose con backend e caricamento del campione. Revisione del `reviewer`: via libera; 160 statistiche ricalcolate dai CSV senza differenze.
+- 2026-11-10 — Tappe 4–8 chiuse: API (15 endpoint), dashboard con grafici, Compose completo, documentazione. Revisioni del `reviewer` con via libera; giro di rifinitura della dashboard. `./verifica.sh` passa: 38 su 38.

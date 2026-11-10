@@ -204,7 +204,7 @@ Richiede Docker, `jq`, `git` e Java 21. Lavora su una copia pulita del repositor
 3. i 38 test di accettazione su pipeline, database, API, dashboard (Playwright), Docker e repository;
 4. gli screenshot della dashboard, salvati in `review/`.
 
-I 54 test del frontend girano durante la build della sua immagine Docker: se uno fallisce, l'immagine non si crea.
+I 72 test del frontend girano durante la build della sua immagine Docker: se uno fallisce, l'immagine non si crea.
 
 ## Screenshot
 
