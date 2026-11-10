@@ -1,0 +1,29 @@
+# Il database si configura solo da variabili d'ambiente (nomi in .env.example).
+# Nome del database, utente e password non hanno valori predefiniti: senza, l'applicazione non parte.
+spring:
+  application:
+    name: f1-data-platform-backend
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+  flyway:
+    # Le migrazioni di database/migrations (radice del repository) vengono impacchettate
+    # nel classpath dalla build Maven; FLYWAY_LOCATIONS permette di puntare altrove.
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs

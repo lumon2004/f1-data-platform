@@ -1,0 +1,23 @@
+# F1 Data Platform — orchestrazione locale.
+# Le credenziali arrivano da variabili d'ambiente o da un file .env non versionato (vedi .env.example).
+# Tappa 1: solo PostgreSQL. I servizi backend, frontend e pipeline si aggiungono alla tappa 7.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?imposta POSTGRES_DB (vedi .env.example)}
+      POSTGRES_USER: ${POSTGRES_USER:?imposta POSTGRES_USER (vedi .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?imposta POSTGRES_PASSWORD (vedi .env.example)}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:

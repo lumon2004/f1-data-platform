@@ -1,0 +1,21 @@
+{
+  "name": "f1-data-platform-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dashboard web di F1 Data Platform (HTML, CSS, moduli ES, Tailwind CSS)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "dev": "npm run build && npm run serve",
+    "pretest": "npm run build",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.5",
+    "tailwindcss": "^4.3.5"
+  }
+}
