@@ -14,8 +14,8 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 - [x] Struttura cartelle, `CLAUDE.md`, `PROGRESS.md`, `.env.example`, `run.sh`
 - [x] Subagent in `.claude/agents/`
 - [x] Hook scritti in `.claude/hooks/` (non ancora attivi)
-- [ ] Test di accettazione, `config/accettazione.json`, `verifica.sh`
-- [ ] Approvazione dell'utente sui test
+- [x] Test di accettazione, `config/accettazione.json`, `verifica.sh` (contratto in `tests/accettazione/README.md`)
+- [x] Approvazione dell'utente sui test (2026-11-10)
 - [ ] `.claude/settings.json` con permessi e hook: lo crea l'utente (la scrittura da parte di Claude è bloccata), dopo l'approvazione dei test
 
 ## Tappe

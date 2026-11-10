@@ -1,0 +1,25 @@
+{
+  "repository": {
+    "max_file_mb": 5,
+    "max_sample_mb": 25
+  },
+  "dataset_esempio": {
+    "stagioni": [2022, 2023, 2024]
+  },
+  "api": {
+    "max_response_ms": 500,
+    "ripetizioni_misura": 5
+  },
+  "docker": {
+    "max_avvio_healthy_s": 180,
+    "max_caricamento_dati_s": 600
+  },
+  "dashboard": {
+    "timeout_elemento_ms": 10000
+  },
+  "porte_verifica": {
+    "postgres": 15432,
+    "api": 18080,
+    "web": 18081
+  }
+}

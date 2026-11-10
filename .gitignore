@@ -17,3 +17,6 @@ logs/
 
 # Impostazioni locali di Claude Code
 .claude/settings.local.json
+
+# Area di lavoro di verifica.sh
+.verifica/
