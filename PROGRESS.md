@@ -4,7 +4,7 @@ Memoria tra le sessioni. Ogni sessione la legge all'inizio e la aggiorna prima d
 
 ## Stato attuale
 
-- **Tappa corrente**: step completato. Resta l'approvazione dell'utente su aspetto e leggibilità degli screenshot in `review/`.
+- **Tappa corrente**: step completato. L'utente ha approvato aspetto e leggibilità della dashboard il 2026-11-10 e ha chiesto il README in inglese (la documentazione in `docs/` resta in italiano).
 - **Bloccanti**: nessuno. `./verifica.sh` passa in modo stabile (9 esecuzioni su 9 dopo la patch ai test del 2026-11-10: 38 test di accettazione su 38). Verdetto finale del `reviewer`: step chiudibile. Proposta facoltativa del `reviewer`, da decidere con l'utente perché il file è bloccato: `read=0` nei nuovi tentativi della sessione dei test.
 
 ## Tappe
