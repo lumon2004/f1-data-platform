@@ -8,9 +8,10 @@ version = "0.1.0"
 description = "Pipeline dati di F1 Data Platform: CSV Kaggle/Ergast -> Parquet -> PostgreSQL"
 requires-python = ">=3.12"
 dependencies = [
-    "polars>=1.0",
-    "pyarrow>=16.0",
-    "psycopg[binary]>=3.2",
+    # Versioni fissate: i byte dei Parquet dipendono dalla versione di PyArrow,
+    # e sono le stesse dell'immagine dei test di accettazione.
+    "pyarrow==17.0.0",
+    "psycopg[binary]==3.2.3",
 ]
 
 [project.optional-dependencies]

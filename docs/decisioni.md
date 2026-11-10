@@ -10,12 +10,19 @@ Registro delle scelte tecniche, con il motivo. Le decisioni prese con l'utente (
 
 ## Pipeline dati (`data-pipeline/`)
 
-- **Polars invece di pandas**: tipi rigorosi e `null` nativo (niente `NaN` né conversioni implicite a float), tipo `Duration` per tempi e durate, lettura CSV e scrittura Parquet veloci.
-- **PyArrow per il Parquet**: permette di controllare compressione e metadati, necessario per avere checksum identici tra due esecuzioni.
-- **psycopg 3** come driver PostgreSQL: supporta `COPY` per il caricamento in blocco e l'upsert `ON CONFLICT` per l'idempotenza; l'extra `binary` evita libpq e compilatore nell'immagine.
-- **argparse per la CLI `f1-pipeline`**: tre sottocomandi (`transform`, `load`, `download`) non giustificano una dipendenza in più.
+- **Modulo `csv` della libreria standard + PyArrow, senza pandas né Polars**: la validazione lavora riga per riga e deve registrare numero di riga e motivo di ogni scarto, con la stessa numerazione dei record usata dai test; un dataframe non aggiungeva nulla e Polars, scelto nello scheletro, è stato tolto. Il dataset completo (circa 590 000 giri) si trasforma in circa 4 secondi.
+- **PyArrow per il Parquet**, con righe ordinate per chiave, compressione zstd e opzioni di scrittura fissate, nessun metadato né timestamp: due esecuzioni sullo stesso input producono file identici al byte.
+- **Versioni fissate (`pyarrow==17.0.0`, `psycopg[binary]==3.2.3`)**: i byte dei Parquet dipendono dalla versione di PyArrow, e sono le stesse versioni dell'immagine dei test di accettazione.
+- **Download con `urllib` verso l'API pubblica di Kaggle**, senza i client `kaggle` o `kagglehub`: nessuna dipendenza in più; supporta sia il token singolo (`Authorization: Bearer`) sia la coppia utente + chiave (HTTP Basic). Le credenziali vanno solo a kaggle.com e non compaiono mai nei messaggi.
+- **Scarti, correzioni e derivazioni in tre file**: `scarti.json` elenca le righe scartate (chiave mancante, tipo non valido, duplicato, riferimento inesistente, cascata); `valori_annullati.json` gli attributi facoltativi non validi messi a `NULL` senza scartare la riga; `valori_derivati.json` le posizioni ricavate da `positionText` quando `position` manca (2 righe in tutto il dataset, nessuna nel campione).
+- **Limite noto del caricamento**: l'upsert non rimuove dal database le righe che spariscono dall'input (solo `stints` viene sostituita). Su un database già popolato, ricaricare un input ridotto lascia le righe precedenti; `verifica.sh` e il Compose partono da un volume vuoto, quindi oggi non incide. Da rivalutare alla tappa 7.
+- **`results.parquet` (gare) e `sprint_results.parquet` (sprint) separati**, riuniti dal caricamento nella tabella `results`: un test di accettazione confronta le righe di `results.parquet` con quelle di `results.csv`.
+- **Caricamento con `COPY` verso tabelle temporanee e upsert `ON CONFLICT ... WHERE ... IS DISTINCT FROM`**, in una sola transazione: idempotente, non riscrive le righe identiche, e un errore non lascia dati a metà. `stints` viene sostituita, perché è derivata.
+- **psycopg 3** come driver PostgreSQL; l'extra `binary` evita libpq e compilatore nell'immagine.
+- **Campione ricopiato byte per byte dai CSV originali** con il comando `f1-pipeline sample`, limitato alle anagrafiche citate dalle stagioni 2022–2024: ripetibile e coerente.
+- **I test del componente che scrivono su PostgreSQL girano solo con `F1_PIPELINE_TEST_DSN`** (database dedicato e già migrato) e altrimenti vengono saltati: `verifica.sh` li esegue accanto al database di verifica, che non devono toccare. Il caricamento resta coperto dai test di accettazione.
+- **argparse per la CLI `f1-pipeline`** (`download`, `sample`, `transform`, `load`, `run`): nessuna dipendenza in più.
 - **Layout `src/` con hatchling**: i test girano sul pacchetto installato, non sulla cartella di lavoro.
-- **Compromesso aperto**: oggi le dipendenze hanno solo limiti inferiori. Alla tappa 3 va deciso se fissare le versioni, perché i checksum dei Parquet possono cambiare tra versioni di Polars e PyArrow.
 
 ## Backend (`backend/`)
 

@@ -197,7 +197,7 @@ Sono `NOT NULL` le chiavi e ciò senza cui la riga non ha significato o l'API no
 
 1. sempre la sessione `race`, con `date` e `time` della gara;
 2. una sessione `fp1`, `fp2`, `fp3`, `qualifying`, `sprint` quando la colonna `<sessione>_date` è valorizzata (in pratica dal 2021);
-3. la sessione `qualifying` o `sprint` anche senza data, quando per quella gara esistono righe in `qualifying.csv` o `sprint_results.csv`. Succede per le qualifiche dal 1994 al 2020: i tempi ci sono, la data no. In quel caso `session_date` è `NULL`.
+3. la sessione `qualifying` o `sprint` anche senza data, quando per quella gara esistono righe in `qualifying.csv` o `sprint_results.csv`. Succede per le qualifiche dal 1994 al 2020: i tempi ci sono, la data no. In quel caso `session_date` è `NULL`. Nel dataset completo riguarda 404 gare su 494 con qualifiche.
 
 **A che livello si agganciano i dati.** Alla sessione:
 
@@ -241,7 +241,8 @@ Una tabella vuota non darebbe nulla alla vista "stint e pit stop" della dashboar
 - in quelle gare, per ogni pilota con almeno un giro completato (`results.laps_completed >= 1`): la fine di uno stint è il giro di una sosta, limitato all'ultimo giro completato; l'ultimo stint finisce all'ultimo giro completato;
 - lo stint inizia al giro 1 o al giro successivo alla fine dello stint precedente;
 - un pilota senza soste ha un solo stint, da 1 all'ultimo giro completato;
-- due soste nello stesso giro, o una sosta nell'ultimo giro completato (ritiro ai box), non generano stint di lunghezza zero.
+- due soste nello stesso giro, o una sosta nell'ultimo giro completato (ritiro ai box), non generano stint di lunghezza zero;
+- un pilota con soste registrate ma nessun giro completato non ha stint: le sue soste restano in `pit_stops`. Nel dataset completo succede una volta (Hülkenberg, gara 1141). Chi legge soste e stint insieme non deve assumere che a ogni sosta corrisponda uno stint.
 
 Specifica equivalente in SQL:
 
@@ -287,7 +288,7 @@ Regole generali per la pipeline:
 
 - `\N` e stringa vuota diventano `NULL`.
 - I tempi testuali diventano millisecondi interi. Formati presenti: `m:ss.mmm` (giri, qualifiche, giro veloce), `ss.mmm` e `m:ss.mmm` (durata delle soste). Dove il CSV ha già la colonna `milliseconds`, quella è il valore caricato.
-- I file Parquet hanno il nome della tabella e le sue colonne: `seasons`, `circuits`, `drivers`, `constructors`, `statuses`, `races`, `sessions`, `results`, `qualifying_results`, `laps`, `pit_stops`, `stints`.
+- Formato intermedio: **13 file Parquet per 12 tabelle**. Undici tabelle hanno un file con il proprio nome e le proprie colonne: `seasons`, `circuits`, `drivers`, `constructors`, `statuses`, `races`, `sessions`, `qualifying_results`, `laps`, `pit_stops`, `stints`. La tabella `results` è divisa in due file con le stesse colonne (quelle della tabella, senza `id`): `results.parquet` contiene solo i risultati delle gare (`session_type = 'race'`), `sprint_results.parquet` quelli delle sprint (`session_type = 'sprint'`). `load` li unisce nella tabella `results`. Motivo: un test di accettazione confronta il numero di righe di `results.parquet` con le righe valide di `results.csv`, quindi il file non può contenere anche le sprint.
 - Ordine di caricamento: `seasons`, `circuits`, `drivers`, `constructors`, `statuses` → `races` → `sessions` → `results`, `qualifying_results`, `laps`, `pit_stops` → `stints`.
 
 ### `seasons.csv` → `seasons`
@@ -362,9 +363,9 @@ Regole generali per la pipeline:
 | `statusId` | `status_id` | |
 | `number` | `car_number` | |
 | `grid` | `grid_position` | `0` → `NULL` (partenza dalla pit lane o non partito) |
-| `position` | `position` | `\N` se non classificato |
+| `position` | `position` | `\N` se non classificato; se manca con `positionText` numerico si deriva da quello |
 | `positionOrder` | `position_order` | |
-| `positionText` | `outcome` | numero → `classified`; `R` → `retired`; `D` → `disqualified`; `E` → `excluded`; `W` → `withdrawn`; `F` → `failed_to_qualify`; `N` → `not_classified`. Altro valore: scarto |
+| `positionText` | `outcome` | intero positivo → `classified`; `R` → `retired`; `D` → `disqualified`; `E` → `excluded`; `W` → `withdrawn`; `F` → `failed_to_qualify`; `N` → `not_classified`. Altro valore: scarto. Vedi [Esito e posizione](#esito-e-posizione) |
 | `points` | `points` | decimale (mezzi punti, punti divisi) |
 | `laps` | `laps_completed` | |
 | `milliseconds` | `time_ms` | |
@@ -375,6 +376,29 @@ Regole generali per la pipeline:
 | `fastestLapSpeed` | `fastest_lap_speed_kph` | assente in `sprint_results.csv` |
 
 `id` è generato dal database: la pipeline non lo valorizza.
+
+#### Esito e posizione
+
+Il vincolo `ck_results_outcome_position` chiede una posizione se e solo se l'esito è `classified`. `outcome` e `position` si ricavano insieme dalla coppia (`positionText`, `position`):
+
+| `positionText` | `position` nel CSV | `outcome` | `position` caricata |
+|---|---|---|---|
+| intero positivo | intero positivo | `classified` | quella della colonna `position` |
+| intero positivo | assente o non valida | `classified` | **derivata da `positionText`** |
+| lettera nota (`R`, `D`, `E`, `W`, `F`, `N`) | assente | esito della lettera | `NULL` |
+| lettera nota | valorizzata | scarto | |
+| altro (lettera sconosciuta, `0`, vuoto) | qualsiasi | scarto | |
+
+**Posizione derivata da `positionText`.** `positionText` è la fonte dell'esito: se è un numero, il pilota è classificato in quella posizione. Quando la colonna `position` manca, la pipeline la ricostruisce da `positionText`. Nel dataset completo succede per 2 righe su 26 759: `resultId` 1149 e 1152, gara 71 (Gran Premio d'Australia 2005), `positionText` e `positionOrder` 11 e 14, `position` = `\N`. Sono due piloti classificati a cui la fonte ha tolto solo la posizione numerica.
+
+Alternative scartate:
+
+- **Scartare le due righe.** Si perderebbero due risultati reali e, a cascata, i loro 111 giri: gli unici 113 scarti dell'intero dataset, per un dato che la riga stessa contiene in un'altra colonna.
+- **Allentare il vincolo con una migrazione.** Ammettere `classified` senza posizione indebolirebbe la regola per tutte le 26 759 righe a causa di due, e ogni query che conta vittorie e podi con `position` dovrebbe chiedersi che cosa fare di un classificato senza posizione.
+
+La derivazione non è un annullamento e non è uno scarto: `transform` la registra a parte (file, riga, valore derivato) e ne riporta il conteggio nel riepilogo. Se la colonna `position` è valorizzata ma non valida (non intera o non positiva), il valore originale finisce in `valori_annullati.json` e la posizione si deriva comunque da `positionText`.
+
+Quando entrambe sono valorizzate vale la colonna `position`; `positionText` decide solo l'esito. La concordanza tra le due non è tra i controlli eseguiti alla tappa 3.
 
 ### `qualifying.csv` → `qualifying_results`
 
@@ -417,11 +441,23 @@ Regole generali per la pipeline:
 
 ### Validazioni che lo schema si aspetta a monte
 
-Il database rifiuta le righe che violano i vincoli; la pipeline deve intercettarle prima e registrarle in `scarti.json`, altrimenti il caricamento fallisce. In particolare:
+Il database rifiuta le righe che violano i vincoli; la pipeline deve intercettare ogni violazione prima, in `transform`, altrimenti il caricamento fallisce. `load` non deve mai fallire su un vincolo. Una violazione ha due esiti possibili, a seconda di dove cade.
 
-- chiavi esterne: una riga che cita una gara, un pilota, una scuderia o uno stato inesistente (o scartato) è uno scarto;
-- un giro o una sosta di un pilota che non ha un risultato valido in quella gara è uno scarto. Lo schema non lo impone (vedi [Chiavi](#chiavi)), ma il test di coerenza conta i giri partendo dai piloti presenti nei risultati;
-- valori fuori dai `CHECK`: tempi o durate non positivi, giri o posizioni non positivi, `positionText` sconosciuto, `positionText` numerico con `position` assente (o viceversa).
+**La riga si scarta** (registrata in `scarti.json` con file, riga e motivo) solo per:
+
+- chiave mancante;
+- tipo non valido, o valore fuori dai `CHECK`, su una chiave o su un campo obbligatorio (le colonne `NOT NULL` dello schema: vedi [Colonne obbligatorie e facoltative](#colonne-obbligatorie-e-facoltative));
+- duplicato sulla chiave di caricamento: resta la prima riga valida;
+- riferimento inesistente: la riga cita una gara, un pilota, una scuderia o uno stato che non esiste o che è stato scartato;
+- cascata: un giro o una sosta di un pilota che non ha un risultato valido in quella gara. Lo schema non lo impone (vedi [Chiavi](#chiavi)), ma il test di coerenza conta i giri partendo dai piloti presenti nei risultati.
+
+**L'attributo diventa `NULL` e la riga resta** (registrato in `valori_annullati.json` con file, riga, colonna, valore originale e motivo) quando un attributo facoltativo non è convertibile o è fuori dai `CHECK`: una durata di sosta non positiva, una sigla che non è di tre maiuscole, una latitudine fuori intervallo. Perdere un risultato o un giro per un attributo accessorio sbagliato toglierebbe più informazione di quanta ne protegga; il valore originale resta comunque rintracciabile nel registro.
+
+Casi in cui la regola generale non basta:
+
+- `positionText` e `position` si validano in coppia: vedi [Esito e posizione](#esito-e-posizione). `positionText` è un campo obbligatorio (da lui dipende `outcome`, `NOT NULL`): se è sconosciuto la riga è uno scarto;
+- `grid = 0` e `rank = 0` sono il modo in cui la fonte scrive "assente": diventano `NULL` senza essere registrati come annullamenti;
+- un orario di sessione senza la sua data viene annullato (`ck_sessions_time_needs_date`); la data della sessione `race` è obbligatoria, e senza di essa si scarta la riga di `races.csv`.
 
 ## Motivazioni
 
@@ -449,7 +485,7 @@ Conseguenza: `laps` non ha una chiave esterna verso `results`. La coerenza "ogni
 - **`results` unifica gare e sprint.** Stessa grana (un pilota-vettura in una classifica a punti), stesse colonne. Due tabelle gemelle obbligherebbero a `UNION` ogni volta che servono i punti di un weekend.
 - **`qualifying_results` resta separata.** Ha attributi diversi (tre tempi, nessun punto, nessuno stato, nessun giro): fonderla in `results` produrrebbe una tabella con metà delle colonne sempre `NULL` a seconda del tipo.
 - **`statuses` è una tabella.** Circa 140 descrizioni ripetute su ogni risultato; l'API le espone come testo con un join sulla chiave primaria.
-- **`outcome` sostituisce `positionText`.** `positionText` mescola due informazioni: la posizione (già in `position`) e il motivo della mancata classifica (`R`, `D`, `E`, `W`, `F`, `N`). Resta solo la seconda, con valori leggibili, e il vincolo `ck_results_outcome_position` lega le due colonne: c'è una posizione se e solo se l'esito è `classified`.
+- **`outcome` sostituisce `positionText`.** `positionText` mescola due informazioni: la posizione (già in `position`) e il motivo della mancata classifica (`R`, `D`, `E`, `W`, `F`, `N`). Resta solo la seconda, con valori leggibili, e il vincolo `ck_results_outcome_position` lega le due colonne: c'è una posizione se e solo se l'esito è `classified`. Il vincolo regge sull'intero dataset perché, nelle due righe in cui la fonte ha un `positionText` numerico senza `position`, la pipeline deriva la posizione da `positionText` (vedi [Esito e posizione](#esito-e-posizione)).
 - **`grid_position` è `NULL` invece di `0`.** Nella fonte `0` significa "nessuna casella". Con `NULL` una media o un minimo sulla griglia non vengono falsati.
 - **`position_order` è mantenuta.** Ordina anche i non classificati; non è ricavabile da `position`.
 - **Dati del giro veloce in `results`.** `fastest_lap_time_ms` è in teoria ricavabile da `laps`, ma è il dato ufficiale della fonte, esiste anche dove i giri mancano, e rango e velocità non sono ricavabili. È una ridondanza accettata e limitata a una colonna.
@@ -525,11 +561,44 @@ JOIN races r ON r.id = res.race_id
 WHERE res.driver_id = :driverId
   AND res.session_type = 'race'
   AND (CAST(:season AS integer) IS NULL OR r.season_year = :season);
+
+-- GET /api/teams/{teamId}/statistics[?season=YYYY]
+SELECT count(DISTINCT res.race_id)                              AS races,
+       count(DISTINCT res.race_id) FILTER (WHERE res.position = 1)  AS wins,
+       count(DISTINCT (res.race_id, res.position))
+           FILTER (WHERE res.position <= 3)                     AS podiums,
+       coalesce(sum(res.points), 0)                             AS points
+FROM results res
+JOIN races r ON r.id = res.race_id
+WHERE res.constructor_id = :teamId
+  AND res.session_type = 'race'
+  AND (CAST(:season AS integer) IS NULL OR r.season_year = :season);
 ```
+
+La query di scuderia usa `idx_results_constructor (constructor_id, session_type, race_id)` e la chiave primaria di `races`.
+
+**Podi di una scuderia: due definizioni.** Una scuderia schiera più vetture, quindi "podi" può voler dire due cose diverse:
+
+| Definizione | Espressione | Red Bull 2023 |
+|---|---|---|
+| Gare con almeno un podio | `count(DISTINCT race_id) FILTER (WHERE position <= 3)` | 21 |
+| Piazzamenti a podio | `count(DISTINCT (race_id, position)) FILTER (WHERE position <= 3)` | 30 |
+
+Le vittorie non hanno questa ambiguità: il primo posto è uno solo per gara, e per Red Bull nel 2023 sono 21 in entrambi i modi.
+
+Raccomandazione: esporre come `podiums` i **piazzamenti a podio** (30). Motivi:
+
+- è il significato corrente di "podi di una scuderia": due vetture sul podio nella stessa gara sono due podi;
+- l'altra definizione non può superare il numero di gare e nasconde proprio i doppi podi, cioè l'informazione che distingue una scuderia da un pilota;
+- per un pilota le due definizioni coincidono, quindi il campo ha lo stesso significato nei due endpoint: "piazzamenti tra i primi tre".
+
+La scelta resta al backend, che la dichiara nella documentazione OpenAPI. Il test di accettazione fissa per la scuderia solo `wins`. Conseguenza da documentare se si segue la raccomandazione: per una scuderia `podiums` può superare `races`.
+
+`count(DISTINCT (race_id, position))` e non `count(*)`: con le vetture condivise degli anni '50 due piloti della stessa scuderia hanno ciascuno una riga con la stessa posizione per la stessa vettura, e `count(*)` conterebbe due podi per un solo gradino.
 
 Note per il backend:
 
-- `count(DISTINCT race_id)` e non `count(*)`: nelle stagioni storiche un pilota può avere più righe nella stessa gara, e una scuderia ne ha sempre più di una.
+- `count(DISTINCT race_id)` e non `count(*)`: nelle stagioni storiche un pilota può avere più righe nella stessa gara (91 coppie gara-pilota ripetute in `results.csv`), e una scuderia ne ha sempre più di una.
 - Le statistiche contano le sole sessioni `race` (Gran Premi), come i valori attesi dei test. Se i punti debbano includere le sprint è una scelta di prodotto del backend: i dati ci sono (`session_type = 'sprint'`).
 - `sum(points)` è la somma dei punti segnati. In alcune stagioni storiche il totale ufficiale di campionato è diverso (regola dei migliori risultati): il modello non contiene le classifiche ufficiali.
 - La sessione `race` esiste per ogni gara per costruzione della pipeline, non per vincolo: chi vuole essere difensivo usa `LEFT JOIN`.
@@ -561,17 +630,37 @@ Regole:
 | Tabella dei paesi | Vedi [Normalizzazione](#normalizzazione) |
 | Storico delle modifiche e colonne di audit (`created_at`, `updated_at`) | La pipeline è riproducibile dall'input: lo stato del database è una funzione dei CSV. Colonne con l'ora di caricamento renderebbero diverse due esecuzioni identiche |
 
-## Assunzioni sulla fonte da verificare alla tappa 3
+## Assunzioni sulla fonte: esito della verifica
 
-I CSV non erano nel repository durante la progettazione. Lo schema si basa sulla struttura nota del dataset; questi punti vanno controllati sul campione e sul dataset completo, e se uno non regge si corregge con una nuova migrazione:
+Lo schema è stato progettato senza i CSV nel repository, sulla struttura nota del dataset. Le assunzioni sono state verificate il **2026-11-10**, alla tappa 3, eseguendo la pipeline sul dataset completo (1950–2024) e sul campione (2022–2024) con le migrazioni V1–V4 invariate.
 
-1. `positionText` contiene solo numeri e le lettere `R`, `D`, `E`, `W`, `F`, `N`, ed è numerico esattamente quando `position` è valorizzata.
-2. `rank` e `grid` usano `0` per "assente"; `fastestLap` non è mai `0`.
-3. `sprint_results.csv` ha le colonne di `results.csv` tranne `rank` e `fastestLapSpeed`.
-4. (gara, pilota) è univoca in `qualifying.csv`, (gara, pilota, giro) in `lap_times.csv`, (gara, pilota, sosta) in `pit_stops.csv`.
-5. `qualifying.position` è sempre valorizzata; `lap_times.milliseconds` è sempre valorizzata e positiva.
-6. Le sigle dei piloti sono tre caratteri maiuscoli; i numeri permanenti stanno tra 0 e 99.
-7. `circuits.country`, `drivers.forename` e `drivers.surname` non sono mai vuoti.
-8. `pit_stops.time` è l'ora locale e `pit_stops.lap` è il giro di ingresso ai box.
-9. Gli orari di `races.csv` sono in UTC.
-10. `statuses.name` e i `ref` sono univoci.
+Risultato: nel campione 2022–2024 nessuna violazione. Nel dataset completo una sola assunzione non regge, per 2 righe su 26 759, ed è risolta con una regola di trasformazione, senza migrazioni.
+
+| # | Assunzione | Esito sul dataset completo |
+|---|---|---|
+| 1a | `positionText` contiene solo numeri e le lettere `R`, `D`, `E`, `W`, `F`, `N` | Regge |
+| 1b | `positionText` è numerico esattamente quando `position` è valorizzata | **Non regge**: 2 righe su 26 759 (`resultId` 1149 e 1152, gara 71, Gran Premio d'Australia 2005) hanno `positionText` 11 e 14 e `position` = `\N`. Il caso inverso (lettera con `position` valorizzata) non si presenta. Regola: [Esito e posizione](#esito-e-posizione) |
+| 2 | `rank` e `grid` usano `0` per "assente"; `fastestLap` non è mai `0` | Regge: `grid = 0` in 1638 righe, `rank = 0` in 258, `fastestLap` mai `0` |
+| 3 | `sprint_results.csv` ha le colonne di `results.csv` tranne `rank` e `fastestLapSpeed` | Regge |
+| 4 | (gara, pilota) è univoca in `qualifying.csv`, (gara, pilota, giro) in `lap_times.csv`, (gara, pilota, sosta) in `pit_stops.csv` | Regge: 0 duplicati |
+| 5 | `qualifying.position` è sempre valorizzata; `lap_times.milliseconds` è sempre valorizzata e positiva | Regge |
+| 6 | Le sigle dei piloti sono tre caratteri maiuscoli; i numeri permanenti stanno tra 0 e 99 | Regge. 757 piloti su 861 non hanno sigla |
+| 7 | `circuits.country`, `drivers.forename` e `drivers.surname` non sono mai vuoti | Regge |
+| 8 | `pit_stops.time` è l'ora locale e `pit_stops.lap` è il giro di ingresso ai box | **Non verificabile dai dati** |
+| 9 | Gli orari di `races.csv` sono in UTC | **Non verificabile dai dati** |
+| 10 | `statuses.name` e i `ref` sono univoci | Regge |
+
+Tutti gli altri vincoli `CHECK`, `NOT NULL`, `UNIQUE` e le chiavi esterne: 0 violazioni. Ogni giro e ogni sosta appartiene a un pilota con un risultato in quella gara.
+
+**Assunzioni non verificabili (8 e 9).** I CSV non contengono nulla con cui confrontarle; restano assunzioni dichiarate, basate sulla documentazione della fonte. Se la 8 fosse falsa cambierebbero di un giro i confini degli stint e il significato di `pit_stops.time_of_day`; se lo fosse la 9, il nome e il significato di `sessions.start_time_utc`. Nessuna delle due tocca vincoli o chiavi.
+
+**Scarti prima e dopo la regola.** Con la regola precedente ("numerico con `position` assente: scarto") le due righe del 2005 venivano scartate insieme ai loro 111 giri di `lap_times.csv`: 113 scarti, gli unici dell'intero dataset. Con la posizione derivata da `positionText` gli scarti attesi sul dataset completo sono zero; il valore va confermato rieseguendo `transform` dopo la modifica.
+
+**Osservazioni che confermano scelte già prese.**
+
+- (gara, pilota) è ripetuta 91 volte in `results.csv` (vetture condivise): conferma l'assenza di un `UNIQUE` su quella coppia e l'uso di `(session_type, source_id)` come chiave di caricamento.
+- 6 risultati non hanno numero di vettura: `results.car_number` resta facoltativa.
+- 404 gare su 494 con qualifiche non hanno `quali_date`: la sessione `qualifying` viene creata senza data, come previsto in [Sessioni](#sessioni).
+- Un pilota con soste registrate e 0 giri completati non ha stint (Hülkenberg, gara 1141): è l'effetto voluto della condizione `laps_completed >= 1`, vedi [Stint e mescole](#stint-e-mescole).
+
+Una nuova versione del dataset può violare un'assunzione che oggi regge. La pipeline non la lascia arrivare al database: la riga finisce in `scarti.json` o l'attributo in `valori_annullati.json`, e i conteggi del riepilogo di `transform` lo rendono visibile.

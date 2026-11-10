@@ -1,0 +1,19 @@
+# Dati completi e intermedi: entrano nel container come volumi, mai nell'immagine
+# (il solo dataset di esempio, sample/, viene copiato).
+raw/
+processed/
+
+# Cache e prodotti di build
+**/__pycache__/
+**/*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
+
+# Non servono all'immagine
+tests/
+.gitignore
+.dockerignore
+Dockerfile
