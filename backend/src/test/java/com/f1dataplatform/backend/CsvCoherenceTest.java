@@ -98,4 +98,38 @@ class CsvCoherenceTest extends PostgresIntegrationTest {
         }
         assertThat(totale).as("giri della gara %s", raceId).isEqualTo(giriPerGara.get(raceId));
     }
+
+    @Test
+    void iGiriDellInteraGaraCoincidonoConLapTimesCsvPerOgniGara() {
+        for (Map<String, String> gara : gareCsv) {
+            String id = gara.get("raceId");
+            JsonNode piloti = getJson("/api/races/" + id + "/laps");
+            assertThat(piloti).as("piloti della gara %s", id).hasSize(risultatiPerGara.get(id).intValue());
+            long totale = 0;
+            for (JsonNode p : piloti) {
+                long giri = p.get("laps").size();
+                assertThat(giri).as("giri del pilota %s nella gara %s", p.get("driver").get("id"), id)
+                        .isEqualTo(giriPerGaraEPilota.getOrDefault(id + "/" + p.get("driver").get("id").asText(), 0L));
+                totale += giri;
+            }
+            assertThat(totale).as("giri della gara %s", id).isEqualTo(giriPerGara.get(id));
+        }
+    }
+
+    @Test
+    void sosteEQualificheCoincidonoConICsvPerOgniGara() {
+        Map<String, Long> sostePerGara = conta(SampleCsv.read(SAMPLE_DIR.resolve("pit_stops.csv")), "raceId");
+        Map<String, Long> qualifichePerGara = conta(SampleCsv.read(SAMPLE_DIR.resolve("qualifying.csv")), "raceId");
+        // Totali del campione: 2542 soste e 1359 righe di qualifica.
+        assertThat(sostePerGara.values().stream().mapToLong(Long::longValue).sum()).isEqualTo(2542);
+        assertThat(qualifichePerGara.values().stream().mapToLong(Long::longValue).sum()).isEqualTo(1359);
+
+        for (Map<String, String> gara : gareCsv) {
+            String id = gara.get("raceId");
+            assertThat(getJson("/api/races/" + id + "/pit-stops")).as("soste della gara %s", id)
+                    .hasSize(sostePerGara.getOrDefault(id, 0L).intValue());
+            assertThat(getJson("/api/races/" + id + "/qualifying")).as("qualifica della gara %s", id)
+                    .hasSize(qualifichePerGara.getOrDefault(id, 0L).intValue());
+        }
+    }
 }

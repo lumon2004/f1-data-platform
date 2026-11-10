@@ -10,6 +10,7 @@ public record ApiError(
         @Schema(description = "Nome standard dello stato HTTP.", example = "Not Found") String error,
         @Schema(description = "Descrizione leggibile dell'errore, senza dettagli interni.",
                 example = "Gara 999999 inesistente") String message,
-        @Schema(description = "Percorso richiesto.", example = "/api/races/999999") String path,
+        @Schema(description = "Percorso richiesto; null se la richiesta era troppo malformata per leggerlo.",
+                example = "/api/races/999999", nullable = true) String path,
         @Schema(description = "Istante dell'errore (UTC).") Instant timestamp) {
 }

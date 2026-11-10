@@ -18,10 +18,19 @@ class OpenApiTest extends PostgresIntegrationTest {
             "/api/races/{raceId}/results",
             "/api/races/{raceId}/laps/{driverId}",
             "/api/drivers/{driverId}/statistics",
-            "/api/teams/{teamId}/statistics");
+            "/api/teams/{teamId}/statistics",
+            // Endpoint aggiuntivi per la dashboard.
+            "/api/seasons/{year}/drivers",
+            "/api/seasons/{year}/teams",
+            "/api/seasons/{year}/standings/drivers",
+            "/api/seasons/{year}/standings/teams",
+            "/api/races/{raceId}/laps",
+            "/api/races/{raceId}/pit-stops",
+            "/api/races/{raceId}/stints",
+            "/api/races/{raceId}/qualifying");
 
     @Test
-    void documentaISettePercorsiConDescrizioneESchemaDellaRisposta() {
+    void documentaTuttiIPercorsiConDescrizioneESchemaDellaRisposta() {
         JsonNode doc = getJson("/v3/api-docs");
 
         assertThat(doc.get("info").get("title").asText()).isEqualTo("F1 Data Platform API");
@@ -46,6 +55,8 @@ class OpenApiTest extends PostgresIntegrationTest {
             JsonNode risposte = doc.get("paths").get(percorso).get("get").get("responses");
             assertThat(risposte.at("/500/content/application~1json/schema/$ref").asText())
                     .as("500 di %s", percorso).isEqualTo(ERRORE);
+            assertThat(risposte.at("/503/content/application~1json/schema/$ref").asText())
+                    .as("503 di %s", percorso).isEqualTo(ERRORE);
             if (!percorso.equals("/api/seasons")) {
                 assertThat(risposte.at("/404/content/application~1json/schema/$ref").asText())
                         .as("404 di %s", percorso).isEqualTo(ERRORE);
@@ -76,6 +87,68 @@ class OpenApiTest extends PostgresIntegrationTest {
             assertThat(schemi.at("/" + statistiche + "/properties").fieldNames()).toIterable()
                     .contains("races", "wins", "podiums", "points");
         }
+    }
+
+    @Test
+    void iCampiSemprePresentiSonoRequiredEINullableNo() {
+        JsonNode schemi = getJson("/v3/api-docs").at("/components/schemas");
+
+        assertRequired(schemi, "Season", "year", "races", "sprints", "firstRaceDate", "lastRaceDate");
+        assertRequired(schemi, "RaceSummary", "id", "season", "round", "name", "date", "circuit", "hasSprint");
+        assertRequired(schemi, "Race", "id", "season", "round", "name", "date", "circuit", "hasSprint", "sessions");
+        assertRequired(schemi, "Circuit", "id", "name", "country");
+        assertRequired(schemi, "Session", "type", "hasResults", "hasLaps");
+        assertRequired(schemi, "Result", "positionOrder", "points", "status", "outcome", "laps", "driver", "team");
+        assertRequired(schemi, "Driver", "id", "name", "givenName", "familyName");
+        assertRequired(schemi, "Team", "id", "name");
+        assertRequired(schemi, "Winner", "driver", "team");
+        assertRequired(schemi, "Lap", "lap", "timeMs");
+        assertRequired(schemi, "DriverStatistics", "driver", "races", "starts", "wins", "podiums", "points",
+                "sprintPoints", "poles", "fastestLaps", "retirements");
+        assertRequired(schemi, "TeamStatistics", "team", "races", "starts", "wins", "podiums", "points",
+                "sprintPoints", "poles", "fastestLaps", "retirements");
+        assertRequired(schemi, "SeasonDriver", "id", "name", "givenName", "familyName", "team", "teams");
+        assertRequired(schemi, "DriverStanding", "position", "driver", "team", "points", "racePoints",
+                "sprintPoints", "wins", "podiums");
+        assertRequired(schemi, "TeamStanding", "position", "team", "points", "racePoints", "sprintPoints", "wins",
+                "podiums");
+        assertRequired(schemi, "DriverLaps", "driver", "team", "laps");
+        assertRequired(schemi, "PitStop", "driver", "stop", "lap");
+        assertRequired(schemi, "Stint", "driver", "stint", "startLap", "endLap", "laps");
+        assertRequired(schemi, "QualifyingResult", "position", "driver", "team");
+        assertRequired(schemi, "ApiError", "status", "error", "message", "timestamp");
+        // Tutti i campi del giro veloce possono mancare: nessun required.
+        assertThat(schemi.at("/FastestLap/required").isMissingNode()).isTrue();
+    }
+
+    /** I campi elencati sono esattamente quelli required; gli altri dello schema sono dichiarati nullable. */
+    private static void assertRequired(JsonNode schemi, String schema, String... attesi) {
+        JsonNode nodo = schemi.get(schema);
+        assertThat(nodo).as("schema %s", schema).isNotNull();
+        List<String> required = new java.util.ArrayList<>();
+        nodo.get("required").forEach(r -> required.add(r.asText()));
+        assertThat(required).as("required di %s", schema).containsExactlyInAnyOrder(attesi);
+        nodo.get("properties").fields().forEachRemaining(p -> {
+            if (!required.contains(p.getKey())) {
+                JsonNode tipo = p.getValue().get("type");
+                boolean nullable = tipo != null && tipo.toString().contains("null");
+                assertThat(nullable).as("%s.%s non required deve essere nullable", schema, p.getKey()).isTrue();
+            }
+        });
+    }
+
+    @Test
+    void dichiaraLeSceltePerGliEndpointAggiuntivi() {
+        JsonNode doc = getJson("/v3/api-docs");
+
+        assertThat(doc.at("/paths/~1api~1seasons~1{year}~1drivers/get/description").asText())
+                .contains("scuderia più recente").contains("teams elenca tutte");
+        assertThat(doc.at("/paths/~1api~1seasons~1{year}~1standings~1drivers/get/description").asText())
+                .contains("gare e delle sprint").contains("A parità di punti");
+        assertThat(doc.at("/paths/~1api~1races~1{raceId}~1stints/get/description").asText())
+                .contains("derivati dai pit stop").contains("compound è sempre null");
+        assertThat(doc.at("/info/description").asText())
+                .contains("503 se il database non è raggiungibile").contains("required");
     }
 
     @Test

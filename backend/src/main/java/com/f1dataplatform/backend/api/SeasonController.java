@@ -1,9 +1,14 @@
 package com.f1dataplatform.backend.api;
 
+import com.f1dataplatform.backend.dto.DriverStandingDto;
 import com.f1dataplatform.backend.dto.RaceSummaryDto;
+import com.f1dataplatform.backend.dto.SeasonDriverDto;
 import com.f1dataplatform.backend.dto.SeasonDto;
+import com.f1dataplatform.backend.dto.TeamDto;
+import com.f1dataplatform.backend.dto.TeamStandingDto;
 import com.f1dataplatform.backend.error.NotFoundException;
 import com.f1dataplatform.backend.repository.RaceRepository;
+import com.f1dataplatform.backend.repository.SeasonRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -20,10 +25,17 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Stagioni", description = "Stagioni e calendario")
 public class SeasonController {
 
-    private final RaceRepository races;
+    private static final String STANDINGS_NOTE = """
+            poi più secondi posti, e così via). È la classifica aggiornata all'ultima gara caricata; non applica \
+            penalizzazioni né regole storiche sui migliori risultati, quindi per alcune stagioni può differire \
+            da quella ufficiale. Risponde 404 se la stagione non ha gare caricate.""";
 
-    public SeasonController(RaceRepository races) {
+    private final RaceRepository races;
+    private final SeasonRepository seasons;
+
+    public SeasonController(RaceRepository races, SeasonRepository seasons) {
         this.races = races;
+        this.seasons = seasons;
     }
 
     @GetMapping
@@ -47,5 +59,70 @@ public class SeasonController {
             throw new NotFoundException("Stagione %d inesistente o senza gare".formatted(year));
         }
         return gare;
+    }
+
+    @GetMapping("/{year}/drivers")
+    @Operation(summary = "Piloti di una stagione",
+            description = "Piloti con almeno un risultato di gara nella stagione, in ordine di cognome. team è la "
+                    + "scuderia più recente (quella dell'ultima gara disputata nella stagione); teams elenca tutte "
+                    + "le scuderie con cui il pilota ha corso, in ordine di prima apparizione. Risponde 404 se la "
+                    + "stagione non ha gare caricate.")
+    @ApiResponse(responseCode = "200", description = "Piloti della stagione.")
+    @BadRequestResponse
+    @NotFoundResponse
+    public List<SeasonDriverDto> drivers(
+            @Parameter(description = "Anno della stagione.", example = "2023") @PathVariable int year) {
+        richiediStagione(year);
+        return seasons.findDrivers(year);
+    }
+
+    @GetMapping("/{year}/teams")
+    @Operation(summary = "Scuderie di una stagione",
+            description = "Scuderie con almeno un risultato di gara nella stagione, in ordine di nome. Risponde "
+                    + "404 se la stagione non ha gare caricate.")
+    @ApiResponse(responseCode = "200", description = "Scuderie della stagione.")
+    @BadRequestResponse
+    @NotFoundResponse
+    public List<TeamDto> teams(
+            @Parameter(description = "Anno della stagione.", example = "2023") @PathVariable int year) {
+        richiediStagione(year);
+        return seasons.findTeams(year);
+    }
+
+    @GetMapping("/{year}/standings/drivers")
+    @Operation(summary = "Classifica piloti di una stagione",
+            description = "Classifica di campionato calcolata dai risultati caricati: points somma i punti delle "
+                    + "gare e delle sprint (dettaglio in racePoints e sprintPoints); wins e podiums contano le "
+                    + "sole gare. A parità di punti decide il confronto dei piazzamenti in gara (più vittorie, "
+                    + STANDINGS_NOTE)
+    @ApiResponse(responseCode = "200", description = "Classifica piloti.")
+    @BadRequestResponse
+    @NotFoundResponse
+    public List<DriverStandingDto> driverStandings(
+            @Parameter(description = "Anno della stagione.", example = "2023") @PathVariable int year) {
+        richiediStagione(year);
+        return seasons.driverStandings(year);
+    }
+
+    @GetMapping("/{year}/standings/teams")
+    @Operation(summary = "Classifica scuderie di una stagione",
+            description = "Classifica di campionato calcolata dai risultati caricati: points somma i punti delle "
+                    + "gare e delle sprint di tutte le vetture (dettaglio in racePoints e sprintPoints); wins e "
+                    + "podiums contano le sole gare, e podiums conta i piazzamenti (due vetture a podio valgono "
+                    + "due). A parità di punti decide il confronto dei piazzamenti in gara (più vittorie, "
+                    + STANDINGS_NOTE)
+    @ApiResponse(responseCode = "200", description = "Classifica scuderie.")
+    @BadRequestResponse
+    @NotFoundResponse
+    public List<TeamStandingDto> teamStandings(
+            @Parameter(description = "Anno della stagione.", example = "2023") @PathVariable int year) {
+        richiediStagione(year);
+        return seasons.teamStandings(year);
+    }
+
+    private void richiediStagione(int year) {
+        if (!seasons.seasonHasRaces(year)) {
+            throw new NotFoundException("Stagione %d inesistente o senza gare".formatted(year));
+        }
     }
 }

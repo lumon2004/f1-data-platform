@@ -1,18 +1,25 @@
 package com.f1dataplatform.backend.repository;
 
+import com.f1dataplatform.backend.dto.DriverLapsDto;
 import com.f1dataplatform.backend.dto.FastestLapDto;
 import com.f1dataplatform.backend.dto.LapDto;
+import com.f1dataplatform.backend.dto.PitStopDto;
+import com.f1dataplatform.backend.dto.QualifyingResultDto;
 import com.f1dataplatform.backend.dto.RaceDto;
 import com.f1dataplatform.backend.dto.RaceSummaryDto;
 import com.f1dataplatform.backend.dto.ResultDto;
 import com.f1dataplatform.backend.dto.SeasonDto;
 import com.f1dataplatform.backend.dto.SessionDto;
+import com.f1dataplatform.backend.dto.StintDto;
 import com.f1dataplatform.backend.dto.WinnerDto;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -180,6 +187,94 @@ public class RaceRepository {
                 .param("driverId", driverId)
                 .query((rs, n) -> new LapDto(rs.getInt("lap_number"), RowMappers.intero(rs, "position"),
                         rs.getInt("time_ms")))
+                .list();
+    }
+
+    /** Primo risultato di gara di ogni pilota: dà l'ordine d'arrivo e la scuderia, una riga per pilota. */
+    private static final String ENTRANTS_CTE = """
+            WITH entrants AS (
+                SELECT DISTINCT ON (res.driver_id) res.driver_id, res.constructor_id, res.position_order
+                FROM results res
+                WHERE res.race_id = :raceId AND res.session_type = 'race'
+                ORDER BY res.driver_id, res.position_order, res.id
+            )
+            """;
+
+    /** Tutti i giri della gara, raggruppati per pilota nell'ordine d'arrivo. */
+    public List<DriverLapsDto> findRaceLaps(int raceId) {
+        Map<Integer, DriverLapsDto> perPilota = new LinkedHashMap<>();
+        jdbc.sql(ENTRANTS_CTE + """
+                        SELECT %s, %s, l.lap_number, l.position AS lap_position, l.time_ms
+                        FROM entrants e
+                        JOIN drivers d ON d.id = e.driver_id
+                        JOIN constructors c ON c.id = e.constructor_id
+                        LEFT JOIN laps l ON l.race_id = :raceId AND l.session_type = 'race'
+                                        AND l.driver_id = e.driver_id
+                        ORDER BY e.position_order, e.driver_id, l.lap_number
+                        """.formatted(RowMappers.DRIVER_COLUMNS, RowMappers.TEAM_COLUMNS))
+                .param("raceId", raceId)
+                .query(rs -> {
+                    DriverLapsDto pilota = perPilota.get(rs.getInt("driver_id"));
+                    if (pilota == null) {
+                        pilota = new DriverLapsDto(RowMappers.driver(rs), RowMappers.team(rs), new ArrayList<>());
+                        perPilota.put(pilota.driver().id(), pilota);
+                    }
+                    int giro = rs.getInt("lap_number");
+                    if (!rs.wasNull()) {
+                        pilota.laps().add(new LapDto(giro, RowMappers.intero(rs, "lap_position"),
+                                rs.getInt("time_ms")));
+                    }
+                });
+        return List.copyOf(perPilota.values());
+    }
+
+    /** Soste della gara in ordine di giro. */
+    public List<PitStopDto> findPitStops(int raceId) {
+        return jdbc.sql("""
+                        SELECT %s, p.stop_number, p.lap_number, p.duration_ms, p.time_of_day
+                        FROM pit_stops p
+                        JOIN drivers d ON d.id = p.driver_id
+                        WHERE p.race_id = :raceId AND p.session_type = 'race'
+                        ORDER BY p.lap_number, p.time_of_day NULLS LAST, p.driver_id, p.stop_number
+                        """.formatted(RowMappers.DRIVER_COLUMNS))
+                .param("raceId", raceId)
+                .query((rs, n) -> new PitStopDto(RowMappers.driver(rs), rs.getInt("stop_number"),
+                        rs.getInt("lap_number"), RowMappers.intero(rs, "duration_ms"),
+                        rs.getObject("time_of_day", LocalTime.class)))
+                .list();
+    }
+
+    /** Stint della gara: piloti nell'ordine d'arrivo, stint in ordine. */
+    public List<StintDto> findStints(int raceId) {
+        return jdbc.sql(ENTRANTS_CTE + """
+                        SELECT %s, s.stint_number, s.start_lap, s.end_lap,
+                               s.end_lap - s.start_lap + 1 AS laps, s.compound
+                        FROM stints s
+                        JOIN drivers d ON d.id = s.driver_id
+                        LEFT JOIN entrants e ON e.driver_id = s.driver_id
+                        WHERE s.race_id = :raceId AND s.session_type = 'race'
+                        ORDER BY e.position_order NULLS LAST, s.driver_id, s.stint_number
+                        """.formatted(RowMappers.DRIVER_COLUMNS))
+                .param("raceId", raceId)
+                .query((rs, n) -> new StintDto(RowMappers.driver(rs), rs.getInt("stint_number"),
+                        rs.getInt("start_lap"), rs.getInt("end_lap"), rs.getInt("laps"), rs.getString("compound")))
+                .list();
+    }
+
+    /** Classifica della qualifica. */
+    public List<QualifyingResultDto> findQualifying(int raceId) {
+        return jdbc.sql("""
+                        SELECT q.position, q.car_number, q.q1_ms, q.q2_ms, q.q3_ms, %s, %s
+                        FROM qualifying_results q
+                        JOIN drivers d ON d.id = q.driver_id
+                        JOIN constructors c ON c.id = q.constructor_id
+                        WHERE q.race_id = :raceId AND q.session_type = 'qualifying'
+                        ORDER BY q.position, q.driver_id
+                        """.formatted(RowMappers.DRIVER_COLUMNS, RowMappers.TEAM_COLUMNS))
+                .param("raceId", raceId)
+                .query((rs, n) -> new QualifyingResultDto(rs.getInt("position"), RowMappers.driver(rs),
+                        RowMappers.team(rs), RowMappers.intero(rs, "car_number"), RowMappers.intero(rs, "q1_ms"),
+                        RowMappers.intero(rs, "q2_ms"), RowMappers.intero(rs, "q3_ms")))
                 .list();
     }
 }

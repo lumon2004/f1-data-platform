@@ -4,6 +4,7 @@ import com.f1dataplatform.backend.dto.DriverDto;
 import com.f1dataplatform.backend.dto.DriverStatisticsDto;
 import com.f1dataplatform.backend.dto.TeamDto;
 import com.f1dataplatform.backend.dto.TeamStatisticsDto;
+import com.f1dataplatform.backend.error.BadRequestException;
 import com.f1dataplatform.backend.error.NotFoundException;
 import com.f1dataplatform.backend.repository.StatisticsRepository;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,7 +29,8 @@ public class StatisticsController {
             aver preso il via; starts conta le sole partenze. points è la somma dei punti delle gare; i punti \
             delle sprint sono in sprintPoints (totale di campionato = points + sprintPoints). \
             Senza il parametro season le statistiche coprono tutte le stagioni caricate; con una stagione in cui \
-            non ci sono gare disputate i contatori valgono 0 e le medie null.""";
+            non ci sono gare disputate i contatori valgono 0 e le medie null; un anno non positivo è un parametro \
+            non valido (400).""";
 
     private final StatisticsRepository statistics;
 
@@ -47,6 +49,7 @@ public class StatisticsController {
             @Parameter(description = "Identificativo del pilota.", example = "830") @PathVariable int driverId,
             @Parameter(description = "Limita le statistiche a una stagione.", example = "2023")
             @RequestParam(required = false) Integer season) {
+        validaStagione(season);
         DriverDto pilota = statistics.findDriver(driverId)
                 .orElseThrow(() -> new NotFoundException("Pilota %d inesistente".formatted(driverId)));
         return DriverStatisticsDto.of(pilota, season, statistics.driverStatistics(driverId, season));
@@ -65,8 +68,17 @@ public class StatisticsController {
             @Parameter(description = "Identificativo della scuderia.", example = "9") @PathVariable int teamId,
             @Parameter(description = "Limita le statistiche a una stagione.", example = "2023")
             @RequestParam(required = false) Integer season) {
+        validaStagione(season);
         TeamDto scuderia = statistics.findTeam(teamId)
                 .orElseThrow(() -> new NotFoundException("Scuderia %d inesistente".formatted(teamId)));
         return TeamStatisticsDto.of(scuderia, season, statistics.teamStatistics(teamId, season));
+    }
+
+    /** Un anno non positivo non è una stagione: 400. Un anno plausibile senza dati dà statistiche a zero. */
+    private static void validaStagione(Integer season) {
+        if (season != null && season <= 0) {
+            throw new BadRequestException(
+                    "Parametro 'season' non valido: '%d' (atteso un anno positivo)".formatted(season));
+        }
     }
 }

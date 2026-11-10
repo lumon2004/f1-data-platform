@@ -6,6 +6,15 @@ spring:
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB}
     username: ${POSTGRES_USER}
+    hikari:
+      # Database irraggiungibile: la richiesta fallisce in pochi secondi (503) invece di restare
+      # appesa per i 30 s predefiniti; vale anche per il controllo di /actuator/health.
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:3000}
+      validation-timeout: 1000
+      data-source-properties:
+        # Driver PostgreSQL, in secondi: apertura della connessione e attesa massima di una risposta.
+        connectTimeout: 2
+        socketTimeout: 30
     password: ${POSTGRES_PASSWORD}
   flyway:
     # Le migrazioni di database/migrations (radice del repository) vengono impacchettate

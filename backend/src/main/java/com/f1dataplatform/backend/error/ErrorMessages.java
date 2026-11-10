@@ -19,7 +19,10 @@ final class ErrorMessages {
             case 404 -> "Risorsa inesistente";
             case 405 -> "Metodo non consentito per questo percorso";
             case 406 -> "Formato di risposta non disponibile";
+            case 414 -> "Indirizzo della richiesta troppo lungo";
             case 415 -> "Formato della richiesta non supportato";
+            case 431 -> "Intestazioni della richiesta troppo grandi";
+            case 503 -> "Database non disponibile, riprova tra poco";
             default -> stato >= 500 ? "Errore interno del server" : "Richiesta non accettata";
         };
     }

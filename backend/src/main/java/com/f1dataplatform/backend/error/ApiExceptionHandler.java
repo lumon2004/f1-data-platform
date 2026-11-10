@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -52,6 +53,19 @@ public class ApiExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     ResponseEntity<ApiError> percorsoInesistente(NoResourceFoundException ex, HttpServletRequest request) {
         return risposta(HttpStatus.NOT_FOUND, "Percorso inesistente: " + request.getRequestURI(), request);
+    }
+
+    /**
+     * Database irraggiungibile (connessione non ottenuta entro il timeout, o caduta durante la query):
+     * 503, perché il guasto è temporaneo e non dipende dalla richiesta.
+     */
+    @ExceptionHandler(DataAccessResourceFailureException.class)
+    ResponseEntity<ApiError> databaseNonDisponibile(DataAccessResourceFailureException ex,
+            HttpServletRequest request) {
+        log.warn("Database non disponibile su {} {}: {}", request.getMethod(), request.getRequestURI(),
+                ex.getMostSpecificCause().getMessage());
+        return risposta(HttpStatus.SERVICE_UNAVAILABLE,
+                ErrorMessages.generico(HttpStatus.SERVICE_UNAVAILABLE.value()), request);
     }
 
     @ExceptionHandler(Exception.class)
