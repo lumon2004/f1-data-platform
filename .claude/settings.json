@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read", "Edit", "Write", "Glob", "Grep", "WebSearch", "WebFetch",
+      "Bash(ls:*)", "Bash(mkdir:*)", "Bash(cat:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(wc:*)",
+      "Bash(python:*)", "Bash(python3:*)", "Bash(uv:*)", "Bash(pip:*)", "Bash(pytest:*)",
+      "Bash(java:*)", "Bash(mvn:*)", "Bash(./mvnw:*)",
+      "Bash(node:*)", "Bash(npm:*)", "Bash(npx:*)",
+      "Bash(docker compose:*)", "Bash(docker ps:*)", "Bash(docker logs:*)", "Bash(psql:*)",
+      "Bash(curl http://localhost:*)", "Bash(./verifica.sh)",
+      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git add:*)", "Bash(git commit:*)"
+    ],
+    "deny": [
+      "Read(./.env)", "Read(./**/.env)", "Read(~/.kaggle/**)", "Edit(./.env)", "Write(./.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit|Read",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/blocca-azioni-rischiose.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/verifica-completamento.sh", "timeout": 1800 }
+        ]
+      }
+    ]
+  }
+}
