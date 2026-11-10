@@ -34,11 +34,16 @@ class BackendApplicationTest extends PostgresIntegrationTest {
     }
 
     @Test
-    void flywayHaInizializzatoLoSchema() {
-        Integer tabelle = jdbc.sql("select count(*) from information_schema.tables where table_name = 'flyway_schema_history'")
+    void flywayHaApplicatoLeMigrazioni() {
+        Integer applicate = jdbc.sql("select count(*) from flyway_schema_history where success")
                 .query(Integer.class).single();
+        java.util.List<String> tabelle = jdbc.sql(
+                        "select table_name from information_schema.tables where table_schema = 'public'")
+                .query(String.class).list();
 
-        assertThat(tabelle).isEqualTo(1);
+        assertThat(applicate).isGreaterThanOrEqualTo(4);
+        assertThat(tabelle).contains("seasons", "races", "circuits", "drivers", "constructors",
+                "sessions", "results", "laps", "stints", "pit_stops");
     }
 
     @Test
