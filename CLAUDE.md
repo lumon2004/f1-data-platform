@@ -34,7 +34,7 @@ Il lavoro è **fatto** quando `./verifica.sh` termina con successo e `review/` c
 
 ## Decisioni già prese con l'utente
 
-- Repo privata `lucaXoffice/f1-data-platform`. Nessuna licenza: software proprietario, niente file `LICENSE`.
+- Repo privata `lumon2004/f1-data-platform`. Nessuna licenza: software proprietario, niente file `LICENSE`.
 - Dati: dataset Kaggle *Formula 1 World Championship* (Rohan Rao). La pipeline scarica con il token Kaggle se configurato, altrimenti legge i CSV già presenti in `data-pipeline/raw/`.
 - Dataset di esempio versionato: stagioni **2022–2024**, in `data-pipeline/sample/`.
 - Backend: **Java 21 + Maven**, Spring Boot 3.
