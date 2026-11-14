@@ -355,6 +355,10 @@ The CC0 licence is the one declared on Kaggle; the original Ergast terms, which 
 
 The dashboard bundles and serves locally, with their respective licence files: [Observable Plot](https://observablehq.com/plot/) and [D3](https://d3js.org/) (ISC licence), the [Inter](https://rsms.me/inter/) typeface (SIL Open Font License 1.1); the styles are generated with [Tailwind CSS](https://tailwindcss.com/) (MIT licence).
 
+## How it works
+
+The project was developed with Claude Code as a team of specialised agents (data architect, pipeline, backend and frontend developers, technical writers, reviewer), coordinated by a main agent. Acceptance tests were written and approved first, then locked by hooks so no agent could edit them; every milestone closed only after the reviewer's sign-off. The setup lives in `CLAUDE.md` and `.claude/`, the original brief in `f1-data-platform-brief-claude-code.md`, the milestone log in `PROGESS.md` (these working files are in Italian).
+
 ## Disclaimer
 
 F1 Data Platform is an unofficial project, not affiliated with Formula 1, the FIA or any team.
